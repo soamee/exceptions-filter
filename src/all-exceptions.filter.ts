@@ -79,7 +79,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     const error = isHttpException
-      ? (exception as HttpException).message
+      ? this.extractErrorField(exception as HttpException)
       : isForbiddenError
         ? (exception as Error).name
         : "Internal error occurred";
@@ -214,6 +214,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
     });
 
     response.status(status).json(errorResponse);
+  }
+
+  private extractErrorField(exception: HttpException): string {
+    const response = exception.getResponse();
+    if (typeof response === "object" && response !== null) {
+      const resp = response as Record<string, unknown>;
+      if (typeof resp.error === "string") {
+        return resp.error;
+      }
+    }
+    return exception.message;
   }
 
   private extractMessage(exception: unknown): string | string[] {
