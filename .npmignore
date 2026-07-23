@@ -1,0 +1,8 @@
+src/
+test/
+tsconfig.json
+tsconfig.build.json
+jest.config.ts
+.npmignore
+coverage/
+node_modules/
