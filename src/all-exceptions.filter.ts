@@ -205,13 +205,21 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     // Return sanitized ErrorResponse
-    const errorResponse = this.getErrorResponse({
+    let errorResponse: Record<string, unknown> = this.getErrorResponse({
       status,
       error: error,
       request,
       message: clientMessage,
       errorId,
     });
+
+    if (this.config.transformResponse) {
+      errorResponse = this.config.transformResponse(
+        errorResponse,
+        exception,
+        request,
+      );
+    }
 
     response.status(status).json(errorResponse);
   }
@@ -274,9 +282,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
     request: Request;
     message: string | string[];
     errorId?: string;
-  }): ErrorResponse {
+  }): Record<string, unknown> {
     const { status, error, request, message, errorId } = params;
-    const response: ErrorResponse = {
+    const response: Record<string, unknown> = {
       statusCode: status,
       error,
       path: request.url,

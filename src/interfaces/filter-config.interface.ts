@@ -34,6 +34,14 @@ export interface ExceptionsFilterConfig {
     request: Request,
   ) => string | string[];
 
+  /** Transform the error response before sending to client.
+   *  Useful for adding project-specific fields like "details". */
+  transformResponse?: (
+    response: Record<string, unknown>,
+    exception: unknown,
+    request: Request,
+  ) => Record<string, unknown>;
+
   logger?: FilterLogger;
 }
 
