@@ -1,9 +1,34 @@
 {
   "name": "@soamee/exceptions-filter",
-  "version": "1.0.6",
+  "version": "2.0.0",
   "description": "Configurable NestJS global exception filter with skip patterns, sanitization, crawler detection, and DB persistence",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./client": {
+      "require": "./dist/client-sdk/index.js",
+      "types": "./dist/client-sdk/index.d.ts"
+    },
+    "./client/web": {
+      "require": "./dist/client-sdk/web.js",
+      "types": "./dist/client-sdk/web.d.ts"
+    },
+    "./client/react": {
+      "require": "./dist/client-sdk/react.js",
+      "types": "./dist/client-sdk/react.d.ts"
+    },
+    "./client/react-native": {
+      "require": "./dist/client-sdk/react-native.js",
+      "types": "./dist/client-sdk/react-native.d.ts"
+    }
+  },
+  "bin": {
+    "upload-sourcemaps": "./dist/cli/upload-sourcemaps.js"
+  },
   "files": [
     "dist"
   ],
@@ -26,9 +51,6 @@
     "url": "https://github.com/soamee/exceptions-filter"
   },
   "dependencies": {
-    "@nestjs/platform-express": "^11.1.28",
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.15.1",
     "date-fns": "^3.0.0 || ^4.0.0",
     "source-map": "^0.7.6"
   },
@@ -36,7 +58,11 @@
     "@nestjs/common": ">=9.0.0",
     "@nestjs/core": ">=9.0.0",
     "express": ">=4.0.0",
-    "reflect-metadata": ">=0.1.0"
+    "reflect-metadata": ">=0.1.0",
+    "@aws-sdk/client-s3": ">=3.0.0",
+    "class-validator": ">=0.14.0",
+    "class-transformer": ">=0.5.0",
+    "@nestjs/platform-express": ">=9.0.0"
   },
   "peerDependenciesMeta": {
     "@prisma/client": {
@@ -46,6 +72,18 @@
       "optional": true
     },
     "@casl/ability": {
+      "optional": true
+    },
+    "@aws-sdk/client-s3": {
+      "optional": true
+    },
+    "class-validator": {
+      "optional": true
+    },
+    "class-transformer": {
+      "optional": true
+    },
+    "@nestjs/platform-express": {
       "optional": true
     }
   },
