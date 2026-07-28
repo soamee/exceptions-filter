@@ -89,6 +89,10 @@ export const userErrorSkipPatterns: RegExp[] = [
   /^AUTH_USER_STATUS_WRONG/i, // Auth user status wrong
   /^AUTH_NOT_IMPLEMENTED/i, // Auth not implemented
 
+  // Rate Limiting (expected responses, not server errors)
+  /^Too Many Requests$/i, // ThrottlerException from @nestjs/throttler (HTTP 429)
+  /^ThrottlerException: Too Many Requests$/i, // ThrottlerException with class prefix
+
   // Network/Client Errors (should not be logged as server errors)
   /^Failed to fetch/i, // Network connectivity issues from frontend
 
