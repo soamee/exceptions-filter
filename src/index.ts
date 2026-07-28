@@ -20,3 +20,10 @@ export type {
 export { PrismaErrorPersistenceAdapter } from "./adapters";
 export { AllExceptionsFilter } from "./all-exceptions.filter";
 export { AllExceptionsModule } from "./all-exceptions.module";
+export {
+  ClientErrorsModule,
+  SourceMapResolver,
+  LocalSourceMapStorage,
+  S3SourceMapStorage,
+} from "./client-errors";
+export type { ClientErrorsModuleConfig, SourceMapStorage } from "./client-errors";
