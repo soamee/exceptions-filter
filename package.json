@@ -26,7 +26,8 @@
     "url": "https://github.com/soamee/exceptions-filter"
   },
   "dependencies": {
-    "date-fns": "^3.0.0 || ^4.0.0"
+    "date-fns": "^3.0.0 || ^4.0.0",
+    "source-map": "^0.7.6"
   },
   "peerDependencies": {
     "@nestjs/common": ">=9.0.0",
