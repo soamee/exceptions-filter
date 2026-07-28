@@ -28,6 +28,10 @@ describe("LocalSourceMapStorage", () => {
     expect(result).toBe('{"version":3,"sources":["main.ts"]}');
   });
 
+  it("should reject path traversal attempts", async () => {
+    await expect(storage.getSourceMap("../../etc", "passwd", "shadow")).rejects.toThrow("path traversal");
+  });
+
   it("should list versions for a platform", async () => {
     await storage.uploadSourceMap("web", "1.0.0", "a.js", Buffer.from("{}"));
     await storage.uploadSourceMap("web", "2.0.0", "b.js", Buffer.from("{}"));

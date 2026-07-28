@@ -41,6 +41,10 @@ export class LocalSourceMapStorage implements SourceMapStorage {
   }
 
   private buildPath(platform: string, version: string, file: string): string {
-    return path.join(this.config.basePath, platform, version, file);
+    const resolvedPath = path.resolve(this.config.basePath, platform, version, file);
+    if (!resolvedPath.startsWith(path.resolve(this.config.basePath))) {
+      throw new Error("Invalid path: attempted path traversal");
+    }
+    return resolvedPath;
   }
 }

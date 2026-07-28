@@ -52,6 +52,13 @@ export class ErrorReporter {
     if (lastSeen && now - lastSeen < this.config.dedupWindowMs) return;
     this.recentKeys.set(dedupKey, now);
 
+    // Prune expired dedup entries
+    for (const [key, timestamp] of this.recentKeys.entries()) {
+      if (now - timestamp > this.config.dedupWindowMs) {
+        this.recentKeys.delete(key);
+      }
+    }
+
     const payload: ClientErrorPayload = {
       ...entry,
       platform: this.config.platform,

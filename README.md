@@ -378,7 +378,7 @@ After building your app, upload the generated `.map` files to the backend:
 
 ```bash
 npx upload-sourcemaps \
-  --endpoint https://api.myapp.com/client-errors/sourcemaps \
+  --api-url https://api.myapp.com/client-errors/sourcemaps \
   --api-key   "$SOURCEMAP_API_KEY" \
   --platform  web \
   --version   "$APP_VERSION" \
@@ -389,7 +389,7 @@ Options:
 
 | Flag | Description |
 |---|---|
-| `--endpoint` | Full URL to the `/client-errors/sourcemaps` route |
+| `--api-url` | Full URL to the `/client-errors/sourcemaps` route |
 | `--api-key` | Secret matching `ClientErrorsModule.register({ apiKey })` |
 | `--platform` | `web`, `ios`, or `android` |
 | `--version` | App version string (e.g. `1.4.2`) |
@@ -419,7 +419,7 @@ jobs:
       - name: Upload source maps
         run: |
           npx upload-sourcemaps \
-            --endpoint ${{ vars.API_URL }}/client-errors/sourcemaps \
+            --api-url ${{ vars.API_URL }}/client-errors/sourcemaps \
             --api-key  ${{ secrets.SOURCEMAP_API_KEY }} \
             --platform web \
             --version  ${{ github.sha }} \
