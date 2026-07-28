@@ -113,7 +113,7 @@ export const botSkipPatterns: RegExp[] = [
   /^Cannot POST \/(?:global-protect|ssl-vpn)\/(?:pre)?login\.esp(?:\?.*)?$/i, // GlobalProtect / SSL-VPN login and prelogin probing
   /^Cannot POST \/remote\/logincheck$/i, // Remote login probing
   /^Cannot POST \/clients$/i, // Generic clients endpoint probing
-  /^Cannot POST \/\?rest_route=\/batch\/v1$/i, // WordPress REST API batch route probing
+  /^Cannot POST \/(?:[a-z0-9_-]+\/)?\?rest_route=\/batch\/v1$/i, // WordPress REST API batch route probing (with optional path prefix)
   /^Cannot POST \/onvif\/device_service$/i, // ONVIF device service probing
   /^Cannot POST \/hello\.world/i, // Invalid route testing
   /^Cannot POST \/dns/i, // DNS probing
