@@ -22,6 +22,16 @@ export interface ExceptionsFilterConfig {
   extraSensitiveFields?: string[];
   extraSensitiveHeaders?: string[];
 
+  /** Route prefixes owned by this project (e.g. ['/api/v1', '/auth', '/webhooks']).
+   *  Errors matching these prefixes are NEVER skipped, even if a skip pattern matches.
+   *  This prevents generic bot/attack patterns from swallowing errors on your real routes.
+   *  When autoDetectRoutes is enabled, detected routes are merged with these. */
+  knownRoutePrefixes?: string[];
+
+  /** When true, automatically detects registered NestJS routes at startup
+   *  and adds them to the known route prefixes. Defaults to true. */
+  autoDetectRoutes?: boolean;
+
   persistence?: ErrorPersistenceAdapter;
 
   onError?: (error: ErrorRecord) => Promise<void>;

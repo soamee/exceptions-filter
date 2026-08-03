@@ -113,7 +113,7 @@ export const botSkipPatterns: RegExp[] = [
   /^Cannot POST \/(?:global-protect|ssl-vpn)\/(?:pre)?login\.esp(?:\?.*)?$/i, // GlobalProtect / SSL-VPN login and prelogin probing
   /^Cannot POST \/remote\/logincheck$/i, // Remote login probing
   /^Cannot POST \/clients$/i, // Generic clients endpoint probing
-  /^Cannot POST \/(?:[a-z0-9_-]+\/)?\?rest_route=\/batch\/v1$/i, // WordPress REST API batch route probing (with optional path prefix)
+  /^Cannot POST \/(?:[a-z0-9_-]+\/)?\?rest_route=(?:\/|%2F)batch(?:\/|%2F)v1$/i, // WordPress REST API batch route probing (with optional path prefix, URL-encoded or decoded)
   /^Cannot POST \/onvif\/device_service$/i, // ONVIF device service probing
   /^Cannot POST \/hello\.world/i, // Invalid route testing
   /^Cannot POST \/dns/i, // DNS probing
@@ -150,6 +150,18 @@ export const botSkipPatterns: RegExp[] = [
   /^Cannot HEAD \/_ignition\/execute-solution$/i, // Laravel Ignition execute-solution probe
   /^Cannot HEAD \/WORDPRESS$/i, // HEAD request to WordPress directory (case-insensitive)
   /^Cannot HEAD \/wp$/i, // HEAD request to wp directory (case-insensitive)
+  /^Cannot HEAD \/epa\/scripts\//i, // Citrix EPA (Endpoint Analysis) client download probing
+
+  // Web shell probing (ALFA shell, EREN shell, and similar web shell management tools)
+  /^Cannot POST \/.*(?:alfacgiapi|Erencgiapi)\//i, // Web shell CGI API directory probing (ALFA, EREN shells)
+  /^Cannot POST \/.*\.(?:alfa|Eren)$/i, // Web shell script file extensions (.alfa, .Eren)
+  /^Cannot POST \/(?:ALFA_DATA|ERENUSE|jancox)\//i, // Web shell data directories
+
+  // Remote code/command execution endpoint probing
+  /^Cannot POST \/(?:api\/)?(?:run|exec|execute|system)$/i, // Generic RCE endpoint probing (/api/run, /api/exec, /execute, /api/system)
+
+  // GeoServer / WFS probing
+  /^Cannot POST \/(?:geoserver\/)?wfs$/i, // GeoServer Web Feature Service probing
 
   // Enterprise application login pages and admin consoles
   /^Cannot GET \/api\/session\/properties$/i, // API session properties endpoint probing

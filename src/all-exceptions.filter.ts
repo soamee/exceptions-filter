@@ -2,11 +2,13 @@ import {
   Catch,
   Injectable,
   Inject,
+  Optional,
   HttpException,
   HttpStatus,
   Logger,
 } from "@nestjs/common";
 import type { ExceptionFilter, ArgumentsHost } from "@nestjs/common";
+import { HttpAdapterHost } from "@nestjs/core";
 import { Request, Response } from "express";
 import {
   ExceptionsFilterConfig,
@@ -34,10 +36,13 @@ try {
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger: FilterLogger;
   private readonly recentErrors = new Map<string, Date>();
+  private detectedRoutePrefixes: string[] | null = null;
 
   constructor(
     @Inject(EXCEPTIONS_FILTER_CONFIG)
     private readonly config: ExceptionsFilterConfig,
+    @Optional()
+    private readonly httpAdapterHost?: HttpAdapterHost,
   ) {
     if (config.logger) {
       this.logger = config.logger;
@@ -142,9 +147,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     // Check skipPatterns → skip DB + notification if match
+    const knownPrefixes = this.getKnownRoutePrefixes();
     const shouldSkip = shouldSkipException(
       messageStr,
       this.config.extraSkipPatterns,
+      knownPrefixes,
     );
 
     let errorId: string | undefined;
@@ -483,6 +490,103 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (!value) return undefined;
     const parsed = parseInt(value, 10);
     return isNaN(parsed) ? undefined : parsed;
+  }
+
+  /**
+   * Returns merged known route prefixes: manual config + auto-detected from NestJS.
+   * Auto-detection runs once (lazy) and caches the result.
+   */
+  private getKnownRoutePrefixes(): string[] {
+    const manual = this.config.knownRoutePrefixes ?? [];
+    const autoDetect = this.config.autoDetectRoutes !== false;
+
+    if (!autoDetect) return manual;
+
+    if (this.detectedRoutePrefixes === null) {
+      this.detectedRoutePrefixes = this.detectRegisteredRoutes();
+      if (this.detectedRoutePrefixes.length > 0) {
+        this.logger.debug(
+          "AllExceptionsFilter",
+          `Auto-detected route prefixes: ${this.detectedRoutePrefixes.join(", ")}`,
+        );
+      }
+    }
+
+    return [...new Set([...manual, ...this.detectedRoutePrefixes])];
+  }
+
+  /**
+   * Extracts registered route prefixes from the Express router stack.
+   * Groups routes by their first path segment(s) to build prefixes.
+   */
+  private detectRegisteredRoutes(): string[] {
+    try {
+      const httpAdapter = this.httpAdapterHost?.httpAdapter;
+      if (!httpAdapter) return [];
+
+      const instance = httpAdapter.getInstance?.();
+      if (!instance?._router?.stack) return [];
+
+      const paths = new Set<string>();
+
+      for (const layer of instance._router.stack) {
+        if (layer.route?.path) {
+          const routePath = String(layer.route.path);
+          const prefix = this.extractRoutePrefix(routePath);
+          if (prefix) paths.add(prefix);
+        }
+        // Handle Router middleware (nested routers with basePath)
+        if (layer.name === "router" && layer.handle?.stack) {
+          const basePath = layer.regexp?.source
+            ? this.regexpToBasePath(layer.regexp)
+            : "";
+          for (const nestedLayer of layer.handle.stack) {
+            if (nestedLayer.route?.path) {
+              const fullPath = basePath + String(nestedLayer.route.path);
+              const prefix = this.extractRoutePrefix(fullPath);
+              if (prefix) paths.add(prefix);
+            }
+          }
+        }
+      }
+
+      return Array.from(paths);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Extracts a meaningful prefix from a route path.
+   * e.g. "/api/v1/users/:id" → "/api/v1"
+   *       "/auth/login" → "/auth"
+   *       "/health" → "/health"
+   */
+  private extractRoutePrefix(routePath: string): string | null {
+    if (!routePath || routePath === "/") return null;
+
+    const segments = routePath.split("/").filter(Boolean);
+    // Take segments until we hit a param (:id) or up to 2 segments
+    const prefixSegments: string[] = [];
+    for (const seg of segments) {
+      if (seg.startsWith(":")) break;
+      prefixSegments.push(seg);
+      if (prefixSegments.length >= 2) break;
+    }
+
+    if (prefixSegments.length === 0) return null;
+    return "/" + prefixSegments.join("/");
+  }
+
+  /**
+   * Attempts to convert an Express route regexp back to its base path.
+   */
+  private regexpToBasePath(regexp: RegExp): string {
+    const src = regexp.source;
+    // Express generates patterns like: ^\/api\/v1\/?(?=\/|$)
+    const match = src.match(/^\^((?:\\\/[a-zA-Z0-9_-]+)+)/);
+    if (!match) return "";
+    return match[1].replace(/\\\//g, "/");
   }
 
 }

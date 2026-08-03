@@ -256,6 +256,132 @@ describe("AllExceptionsFilter", () => {
     });
   });
 
+  describe("knownRoutePrefixes", () => {
+    it("should NOT skip errors matching a known route prefix even if skip pattern matches", async () => {
+      const created = { id: "new-1", exceptionMessage: "Test", createdAt: new Date(), updatedAt: new Date() };
+      const persistence = { findDuplicate: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) };
+      const config = createConfig({
+        persistence,
+        enableThrottling: false,
+        autoDetectRoutes: false,
+        knownRoutePrefixes: ["/api/v1"],
+      });
+      const filter = new AllExceptionsFilter(config);
+      const host = createMockHost();
+
+      // "/api/v1/upload" would normally match upload skip pattern but
+      // /api/v1 is a known prefix → should NOT skip
+      await filter.catch(new Error("Cannot POST /api/v1/upload"), host);
+
+      expect(persistence.create).toHaveBeenCalled();
+    });
+
+    it("should still skip errors for non-known routes", async () => {
+      const persistence = { findDuplicate: jest.fn(), create: jest.fn() };
+      const config = createConfig({
+        persistence,
+        autoDetectRoutes: false,
+        knownRoutePrefixes: ["/api/v1"],
+      });
+      const filter = new AllExceptionsFilter(config);
+      const host = createMockHost();
+
+      // wp-admin not under /api/v1 → skip as normal
+      await filter.catch(new Error("Cannot GET /wp-admin/"), host);
+
+      expect(persistence.create).not.toHaveBeenCalled();
+    });
+
+    it("should work without knownRoutePrefixes (backwards compatible)", async () => {
+      const persistence = { findDuplicate: jest.fn(), create: jest.fn() };
+      const config = createConfig({ persistence, autoDetectRoutes: false });
+      const filter = new AllExceptionsFilter(config);
+      const host = createMockHost();
+
+      await filter.catch(new Error("Cannot GET /wp-admin/"), host);
+
+      expect(persistence.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("autoDetectRoutes", () => {
+    function createMockHttpAdapterHost(routes: Array<{ path: string; methods: Record<string, boolean> }>) {
+      const stack = routes.map(r => ({
+        route: { path: r.path, methods: r.methods },
+      }));
+      return {
+        httpAdapter: {
+          getInstance: () => ({
+            _router: { stack },
+          }),
+        },
+      } as any;
+    }
+
+    it("should auto-detect routes and protect them from skip patterns", async () => {
+      const created = { id: "new-1", exceptionMessage: "Test", createdAt: new Date(), updatedAt: new Date() };
+      const persistence = { findDuplicate: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) };
+      const config = createConfig({ persistence, enableThrottling: false });
+      const httpAdapterHost = createMockHttpAdapterHost([
+        { path: "/api/v1/users", methods: { get: true, post: true } },
+        { path: "/api/v1/upload", methods: { post: true } },
+      ]);
+      const filter = new AllExceptionsFilter(config, httpAdapterHost);
+      const host = createMockHost();
+
+      // /api/v1/upload would match upload skip pattern but is auto-detected route
+      await filter.catch(new Error("Cannot POST /api/v1/upload"), host);
+
+      expect(persistence.create).toHaveBeenCalled();
+    });
+
+    it("should not auto-detect when autoDetectRoutes is false", async () => {
+      const persistence = { findDuplicate: jest.fn(), create: jest.fn() };
+      const config = createConfig({ persistence, autoDetectRoutes: false });
+      const httpAdapterHost = createMockHttpAdapterHost([
+        { path: "/api/v1/upload", methods: { post: true } },
+      ]);
+      const filter = new AllExceptionsFilter(config, httpAdapterHost);
+      const host = createMockHost();
+
+      // /wp-admin/ matches skip patterns → should be skipped regardless of auto-detect
+      await filter.catch(new Error("Cannot GET /wp-admin/"), host);
+
+      expect(persistence.create).not.toHaveBeenCalled();
+    });
+
+    it("should merge manual and auto-detected prefixes", async () => {
+      const created = { id: "new-1", exceptionMessage: "Test", createdAt: new Date(), updatedAt: new Date() };
+      const persistence = { findDuplicate: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) };
+      const config = createConfig({
+        persistence,
+        enableThrottling: false,
+        knownRoutePrefixes: ["/webhooks"],
+      });
+      const httpAdapterHost = createMockHttpAdapterHost([
+        { path: "/api/v1/users", methods: { get: true } },
+      ]);
+      const filter = new AllExceptionsFilter(config, httpAdapterHost);
+      const host = createMockHost();
+
+      // /webhooks is manual prefix, should be protected
+      await filter.catch(new Error("Cannot POST /webhooks/stripe"), host);
+
+      expect(persistence.create).toHaveBeenCalled();
+    });
+
+    it("should handle missing httpAdapterHost gracefully", async () => {
+      const persistence = { findDuplicate: jest.fn(), create: jest.fn() };
+      const config = createConfig({ persistence });
+      const filter = new AllExceptionsFilter(config); // no httpAdapterHost
+      const host = createMockHost();
+
+      await filter.catch(new Error("Cannot GET /wp-admin/"), host);
+
+      expect(persistence.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe("error response shape", () => {
     it("should include errorId when persisted", async () => {
       const created = { id: "err-123", exceptionMessage: "Test", createdAt: new Date(), updatedAt: new Date() };
