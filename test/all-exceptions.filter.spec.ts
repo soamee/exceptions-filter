@@ -380,6 +380,114 @@ describe("AllExceptionsFilter", () => {
 
       expect(persistence.create).not.toHaveBeenCalled();
     });
+
+    it("should handle httpAdapterHost with no getInstance", async () => {
+      const persistence = { findDuplicate: jest.fn(), create: jest.fn() };
+      const config = createConfig({ persistence });
+      const httpAdapterHost = { httpAdapter: {} } as any;
+      const filter = new AllExceptionsFilter(config, httpAdapterHost);
+      const host = createMockHost();
+
+      await filter.catch(new Error("Cannot GET /wp-admin/"), host);
+
+      expect(persistence.create).not.toHaveBeenCalled();
+    });
+
+    it("should handle httpAdapterHost with no _router", async () => {
+      const persistence = { findDuplicate: jest.fn(), create: jest.fn() };
+      const config = createConfig({ persistence });
+      const httpAdapterHost = { httpAdapter: { getInstance: () => ({}) } } as any;
+      const filter = new AllExceptionsFilter(config, httpAdapterHost);
+      const host = createMockHost();
+
+      await filter.catch(new Error("Cannot GET /wp-admin/"), host);
+
+      expect(persistence.create).not.toHaveBeenCalled();
+    });
+
+    it("should cache detected routes (only detect once)", async () => {
+      const created = { id: "new-1", exceptionMessage: "Test", createdAt: new Date(), updatedAt: new Date() };
+      const persistence = { findDuplicate: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) };
+      const config = createConfig({ persistence, enableThrottling: false });
+      const getInstance = jest.fn().mockReturnValue({
+        _router: { stack: [{ route: { path: "/api/v1/users", methods: { get: true } } }] },
+      });
+      const httpAdapterHost = { httpAdapter: { getInstance } } as any;
+      const filter = new AllExceptionsFilter(config, httpAdapterHost);
+
+      const host1 = createMockHost();
+      const host2 = createMockHost();
+      await filter.catch(new Error("Cannot POST /api/v1/upload"), host1);
+      await filter.catch(new Error("Cannot POST /api/v1/upload"), host2);
+
+      // getInstance called only once due to caching
+      expect(getInstance).toHaveBeenCalledTimes(1);
+    });
+
+    it("should detect routes from nested routers with basePath", async () => {
+      const created = { id: "new-1", exceptionMessage: "Test", createdAt: new Date(), updatedAt: new Date() };
+      const persistence = { findDuplicate: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) };
+      const config = createConfig({ persistence, enableThrottling: false });
+      const httpAdapterHost = {
+        httpAdapter: {
+          getInstance: () => ({
+            _router: {
+              stack: [
+                {
+                  name: "router",
+                  regexp: /^\/api\/v1\/?(?=\/|$)/i,
+                  handle: {
+                    stack: [
+                      { route: { path: "/users", methods: { get: true } } },
+                      { route: { path: "/products/:id", methods: { get: true } } },
+                    ],
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      } as any;
+      const filter = new AllExceptionsFilter(config, httpAdapterHost);
+      const host = createMockHost();
+
+      // /api/v1/users detected from nested router → /api/v1 prefix protected
+      await filter.catch(new Error("Cannot POST /api/v1/upload"), host);
+
+      expect(persistence.create).toHaveBeenCalled();
+    });
+
+    it("should not protect non-project routes when project routes are detected", async () => {
+      const persistence = { findDuplicate: jest.fn(), create: jest.fn() };
+      const config = createConfig({ persistence });
+      const httpAdapterHost = createMockHttpAdapterHost([
+        { path: "/api/v1/users", methods: { get: true } },
+      ]);
+      const filter = new AllExceptionsFilter(config, httpAdapterHost);
+      const host = createMockHost();
+
+      // /wp-admin is NOT under any detected prefix → still skipped
+      await filter.catch(new Error("Cannot GET /wp-admin/"), host);
+
+      expect(persistence.create).not.toHaveBeenCalled();
+    });
+
+    it("should handle routes at root level like /health", async () => {
+      const created = { id: "new-1", exceptionMessage: "Test", createdAt: new Date(), updatedAt: new Date() };
+      const persistence = { findDuplicate: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) };
+      const config = createConfig({ persistence, enableThrottling: false });
+      const httpAdapterHost = createMockHttpAdapterHost([
+        { path: "/health", methods: { get: true } },
+        { path: "/api/v1/users", methods: { get: true } },
+      ]);
+      const filter = new AllExceptionsFilter(config, httpAdapterHost);
+      const host = createMockHost();
+
+      // /health is auto-detected → protected from "health check" skip pattern
+      await filter.catch(new Error("Cannot GET /health"), host);
+
+      expect(persistence.create).toHaveBeenCalled();
+    });
   });
 
   describe("error response shape", () => {
