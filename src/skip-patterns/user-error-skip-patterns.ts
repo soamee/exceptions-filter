@@ -41,6 +41,7 @@ export const userErrorSkipPatterns: RegExp[] = [
   /^USER_EMAIL_ALREADY_IN_USE/i, // USER_EMAIL_ALREADY_IN_USE
   /^Admin users cannot authenticate from the public frontend\. Please use the dashboard entry point\./i, // ADMIN_USERS_CANNOT_AUTHENTICATE_FROM_FRONTEND
   /^Standard users cannot authenticate from the admin dashboard\. Please use the public entry point\./i, // USERS_CANNOT_AUTHENTICATE_FROM_DASHBOARD
+  /^User status "[^"]*" not allowed\. "[^"]*" required$/i, // User status precondition failure (e.g., Googlebot crawling verify-email links)
 
   // Content Domain Errors
   /^CONTENT_ID_INVALID_UUID/i, // CONTENT_ID_INVALID_UUID

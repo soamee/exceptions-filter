@@ -63,7 +63,7 @@ export const botSkipPatterns: RegExp[] = [
   /^Cannot DELETE \/$/i, // Bots attempting to delete root
   /^Cannot POST \/sdk$/i, // Probing for SDK endpoint
   /^Cannot POST \/json_rpc$/i, // JSON-RPC endpoint probing
-  /^Cannot POST \/admin$/i, // Attempt to reach admin panel
+  /^Cannot POST \/admin(?:\/.*)?$/i, // Attempt to reach admin panel or subpaths (/admin, /admin/config, etc.)
   /^Cannot POST \/login$/i, // Brute force login attempts
   /^Cannot POST \/session$/i, // Session endpoint probing
   /^Cannot POST \/api\/auth\/login$/i, // Unauthorized login route probing
@@ -162,6 +162,22 @@ export const botSkipPatterns: RegExp[] = [
 
   // GeoServer / WFS probing
   /^Cannot POST \/(?:geoserver\/)?wfs$/i, // GeoServer Web Feature Service probing
+
+  // Androxgh0st / generic malware POST probes
+  /^Cannot POST \/public\/?$/i, // Androxgh0st malware probe to /public/
+
+  // GraphQL endpoint probing (aliases and alternate paths)
+  /^Cannot POST \/gql$/i, // GraphQL alias endpoint probing
+  /^Cannot POST \/api\/query$/i, // GraphQL introspection via /api/query
+
+  // Debug/config endpoint probing
+  /^Cannot POST \/debug$/i, // Debug endpoint RCE probing (GSCAN_CMDI)
+
+  // gRPC reflection probing
+  /^Cannot POST \/grpc\./i, // gRPC service reflection scanning
+
+  // Laravel log file probing
+  /^Cannot POST \/storage\/logs\//i, // Laravel storage/logs directory probing
 
   // Enterprise application login pages and admin consoles
   /^Cannot GET \/api\/session\/properties$/i, // API session properties endpoint probing
