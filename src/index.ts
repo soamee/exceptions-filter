@@ -20,3 +20,18 @@ export type {
 export { PrismaErrorPersistenceAdapter } from "./adapters";
 export { AllExceptionsFilter } from "./all-exceptions.filter";
 export { AllExceptionsModule } from "./all-exceptions.module";
+export {
+  parseEnvelope,
+  formatActionsAsTimeline,
+  formatTimelineMjml,
+  formatSessionSummaryMjml,
+  formatEnvelopeToMjml,
+  formatActionsAsPlainText,
+} from "./email";
+export type {
+  BugfinderAction,
+  BugfinderEnvelope,
+  PathContext as BugfinderPathContext,
+  SessionContext as BugfinderSessionContext,
+  ActionCategory as BugfinderActionCategory,
+} from "./email";
