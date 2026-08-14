@@ -20,6 +20,8 @@ import { sanitizeHeaders } from "./sanitization";
 import { sanitizeBody } from "./sanitization";
 import { shouldSkipException } from "./skip-patterns";
 import { detectCrawler, extractRequestOrigin } from "./detection";
+import { renderExceptionEmail } from "./email/exception-email.template";
+import type { CreateErrorData } from "./interfaces/error-record.interface";
 
 let ForbiddenError: any;
 try {
@@ -193,22 +195,27 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     // onError callback — only for newly created records, not duplicates
-    if (
+    const shouldNotify =
       !shouldSkip &&
       isNewRecord &&
       persistedRecord &&
-      this.config.onError &&
       !isCrawler &&
-      !this.isFromExceptionController(request.url)
-    ) {
-      try {
-        await this.config.onError(persistedRecord);
-      } catch (callbackError) {
-        this.logger.error(
-          "AllExceptionsFilter",
-          `onError callback failed: ${callbackError}`,
-        );
+      !this.isFromExceptionController(request.url);
+
+    if (shouldNotify && persistedRecord) {
+      if (this.config.onError) {
+        try {
+          await this.config.onError(persistedRecord);
+        } catch (callbackError) {
+          this.logger.error(
+            "AllExceptionsFilter",
+            `onError callback failed: ${callbackError}`,
+          );
+        }
       }
+
+      // Email notification — alongside onError, not replacing it
+      await this.sendEmailNotification(persistedRecord);
     }
 
     // Return sanitized ErrorResponse
@@ -587,6 +594,61 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const match = src.match(/^\^((?:\\\/[a-zA-Z0-9_-]+)+)/);
     if (!match) return "";
     return match[1].replace(/\\\//g, "/");
+  }
+
+  /**
+   * Sends email notifications for a new error record when emailNotification is configured.
+   */
+  private async sendEmailNotification(
+    record: import("./interfaces/error-record.interface").ErrorRecord,
+  ): Promise<void> {
+    const emailConfig = this.config.emailNotification;
+    if (!emailConfig?.enabled || !emailConfig.adapter || !emailConfig.toEmails?.length) {
+      return;
+    }
+
+    try {
+      // Resolve user info if triggeredById exists and userResolver is configured
+      let user: import("./interfaces/email-notification.interface").UserInfo | null = null;
+      const triggeredById = (record as unknown as CreateErrorData).triggeredById;
+      if (triggeredById && emailConfig.userResolver) {
+        try {
+          user = await emailConfig.userResolver(triggeredById);
+        } catch (resolveError) {
+          this.logger.warn(
+            "AllExceptionsFilter",
+            `userResolver failed for ${triggeredById}: ${resolveError}`,
+          );
+        }
+      }
+
+      const { subject, html } = renderExceptionEmail({
+        error: record as import("./interfaces/error-record.interface").ErrorRecord & CreateErrorData,
+        appName: this.config.appName,
+        appModuleName: (record as unknown as CreateErrorData).appModuleName,
+        appEnvironment: this.config.appEnvironment,
+        user,
+        createdAt: record.createdAt
+          ? new Date(record.createdAt).toISOString()
+          : new Date().toISOString(),
+      });
+
+      const sendPromises = emailConfig.toEmails.map((to) =>
+        emailConfig.adapter.sendNotification({ to, subject, html }).catch((sendError) => {
+          this.logger.error(
+            "AllExceptionsFilter",
+            `Failed to send error email to ${to}: ${sendError}`,
+          );
+        }),
+      );
+
+      await Promise.all(sendPromises);
+    } catch (emailError) {
+      this.logger.error(
+        "AllExceptionsFilter",
+        `Email notification failed: ${emailError}`,
+      );
+    }
   }
 
 }

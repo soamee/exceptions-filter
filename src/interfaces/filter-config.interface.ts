@@ -1,6 +1,7 @@
 import { Request } from "express";
 import { ErrorPersistenceAdapter } from "./error-persistence.interface";
 import { ErrorRecord } from "./error-record.interface";
+import { EmailNotificationConfig } from "./email-notification.interface";
 import { FilterLogger } from "./logger.interface";
 
 export interface ExceptionsFilterConfig {
@@ -53,6 +54,9 @@ export interface ExceptionsFilterConfig {
   ) => Record<string, unknown>;
 
   logger?: FilterLogger;
+
+  /** Email notification config. When set, the package handles sending error emails. */
+  emailNotification?: EmailNotificationConfig;
 }
 
 export const EXCEPTIONS_FILTER_CONFIG = Symbol("EXCEPTIONS_FILTER_CONFIG");

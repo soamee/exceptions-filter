@@ -6,6 +6,8 @@ export {
   formatEnvelopeToMjml,
   formatActionsAsPlainText,
 } from "./timeline-formatter";
+export { renderExceptionEmail } from "./exception-email.template";
+export type { RenderExceptionEmailParams } from "./exception-email.template";
 export type {
   BugfinderAction,
   BugfinderEnvelope,

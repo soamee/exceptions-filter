@@ -27,8 +27,10 @@ export {
   formatSessionSummaryMjml,
   formatEnvelopeToMjml,
   formatActionsAsPlainText,
+  renderExceptionEmail,
 } from "./email";
 export type {
+  RenderExceptionEmailParams,
   BugfinderAction,
   BugfinderEnvelope,
   PathContext as BugfinderPathContext,
