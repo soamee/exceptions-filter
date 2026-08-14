@@ -634,7 +634,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       });
 
       const sendPromises = emailConfig.toEmails.map((to) =>
-        emailConfig.adapter.sendNotification({ to, subject, html }).catch((sendError) => {
+        emailConfig.adapter.sendNotification({ to, subject, html, action: "bugfinder-exception-notification" }).catch((sendError) => {
           this.logger.error(
             "AllExceptionsFilter",
             `Failed to send error email to ${to}: ${sendError}`,

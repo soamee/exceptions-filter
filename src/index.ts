@@ -28,9 +28,11 @@ export {
   formatEnvelopeToMjml,
   formatActionsAsPlainText,
   renderExceptionEmail,
+  resendExceptionEmail,
 } from "./email";
 export type {
   RenderExceptionEmailParams,
+  ResendExceptionEmailParams,
   BugfinderAction,
   BugfinderEnvelope,
   PathContext as BugfinderPathContext,

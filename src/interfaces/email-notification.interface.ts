@@ -7,6 +7,8 @@ export interface EmailNotificationAdapter {
     to: string;
     subject: string;
     html: string;
+    /** Optional action identifier for email logging */
+    action?: string;
   }): Promise<void>;
 }
 
