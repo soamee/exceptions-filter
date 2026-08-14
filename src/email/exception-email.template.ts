@@ -46,12 +46,25 @@ const escapeHtml = (str: string): string => {
     .replace(/"/g, "&quot;");
 };
 
+const decodeBase64 = (str: string): string => {
+  try {
+    const decoded = Buffer.from(str, "base64").toString("utf-8");
+    // If decoded looks like readable text (not binary garbage), use it
+    if (/^[\x20-\x7E\s]+$/.test(decoded)) return decoded;
+    return str;
+  } catch {
+    return str;
+  }
+};
+
 const formatUserActionsTimeline = (
   lastUserActions: string | undefined,
 ): string => {
   if (!lastUserActions || lastUserActions.trim() === "") return "";
 
-  const actions = lastUserActions.split(",").map((a) => a.trim());
+  // Decode base64 if needed (x-last-actions header is base64-encoded)
+  const decoded = decodeBase64(lastUserActions);
+  const actions = decoded.split(",").map((a) => a.trim()).filter(Boolean);
 
   const rows = actions
     .map((action, idx) => {
