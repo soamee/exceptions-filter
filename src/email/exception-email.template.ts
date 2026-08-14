@@ -15,6 +15,17 @@ const truncate = (str: string | undefined, maxLen: number): string => {
   return str.length > maxLen ? str.substring(0, maxLen) + "..." : str;
 };
 
+const prettyJson = (str: string | undefined, maxLen: number): string => {
+  if (!str) return "";
+  try {
+    const parsed = JSON.parse(str);
+    const pretty = JSON.stringify(parsed, null, 2);
+    return truncate(pretty, maxLen);
+  } catch {
+    return truncate(str, maxLen);
+  }
+};
+
 const formatStackTrace = (
   trace: string | undefined,
   maxLines: number = 10,
@@ -231,7 +242,7 @@ export function renderExceptionEmail(params: RenderExceptionEmailParams): {
           <div style="font-size:11px;font-weight:bold;color:#6c757d;text-transform:uppercase;padding-bottom:4px;">
             Query Parameters
           </div>
-          <pre style="background:#f8f9fa;color:#333;padding:10px;border-radius:4px;font-family:monospace;font-size:11px;margin:0 0 12px 0;white-space:pre-wrap;word-wrap:break-word;">${escapeHtml(truncate(error.requestQuery, 500))}</pre>
+          <pre style="background:#f8f9fa;color:#333;padding:10px;border-radius:4px;font-family:monospace;font-size:11px;margin:0 0 12px 0;white-space:pre-wrap;word-wrap:break-word;">${escapeHtml(prettyJson(error.requestQuery, 800))}</pre>
           `
               : ""
           }
@@ -242,7 +253,7 @@ export function renderExceptionEmail(params: RenderExceptionEmailParams): {
           <div style="font-size:11px;font-weight:bold;color:#6c757d;text-transform:uppercase;padding-bottom:4px;">
             Request Body
           </div>
-          <pre style="background:#f8f9fa;color:#333;padding:10px;border-radius:4px;font-family:monospace;font-size:11px;margin:0 0 12px 0;white-space:pre-wrap;word-wrap:break-word;">${escapeHtml(truncate(error.requestBody, 500))}</pre>
+          <pre style="background:#f8f9fa;color:#333;padding:10px;border-radius:4px;font-family:monospace;font-size:11px;margin:0 0 12px 0;white-space:pre-wrap;word-wrap:break-word;">${escapeHtml(prettyJson(error.requestBody, 800))}</pre>
           `
               : ""
           }
@@ -253,7 +264,7 @@ export function renderExceptionEmail(params: RenderExceptionEmailParams): {
           <div style="font-size:11px;font-weight:bold;color:#6c757d;text-transform:uppercase;padding-bottom:4px;">
             Request Headers
           </div>
-          <pre style="background:#f8f9fa;color:#333;padding:10px;border-radius:4px;font-family:monospace;font-size:11px;margin:0;white-space:pre-wrap;word-wrap:break-word;">${escapeHtml(truncate(error.requestHeaders, 400))}</pre>
+          <pre style="background:#f8f9fa;color:#333;padding:10px;border-radius:4px;font-family:monospace;font-size:11px;margin:0;white-space:pre-wrap;word-wrap:break-word;">${escapeHtml(prettyJson(error.requestHeaders, 800))}</pre>
           `
               : ""
           }
