@@ -85,21 +85,110 @@ export class AppModule {}
 |---|---|---|---|
 | `appName` | `string` | — | Required. Identifier attached to every error record. |
 | `appEnvironment` | `string` | — | Required. Environment tag (e.g. `production`, `staging`). |
-| `enableCrawlerDetection` | `boolean` | `true` | Detect bot/crawler user-agents and suppress `onError` for them. |
+| `enableCrawlerDetection` | `boolean` | `false` | When enabled, detect bot/crawler requests and suppress both `onError` and email notifications for them; persistence still runs. |
 | `enableRequestOriginMetadata` | `boolean` | `true` | Extract client IP, forwarded headers, referer, and origin from the request. |
 | `enableSentry` | `boolean` | `false` | Capture unhandled 500s to Sentry (requires `@sentry/nestjs` peer dep). |
-| `enableThrottling` | `boolean` | `true` | Deduplicate rapid identical errors from the same IP within `throttleMs`. |
+| `enableThrottling` | `boolean` | `false` | When enabled, skip persistence (and therefore notifications) for repeated messages from the same IP within `throttleMs`. |
 | `enableDeduplication` | `boolean` | `true` | Skip DB persistence when a matching error already exists within the dedup window. |
 | `hideInternalErrors` | `boolean` | `true` | Replace unhandled 500 messages with a generic string before sending to the client. |
 | `throttleMs` | `number` | `1000` | Milliseconds within which identical errors from the same IP are collapsed. |
 | `deduplicationWindowHours` | `number` | `24` | Hours back to search for a duplicate error record. |
-| `skipMethods` | `string[]` | `['HEAD', 'MKCOL']` | HTTP methods that always receive an early empty response without logging. |
+| `skipMethods` | `string[]` | `['HEAD', 'MKCOL']` | HTTP methods that return the normal structured error response early, without logging, persistence, crawler detection, notifications, or `transformResponse`. |
 | `extraSkipPatterns` | `RegExp[]` | `[]` | Additional patterns appended to the base skip list. |
 | `extraSensitiveFields` | `string[]` | `[]` | Additional body field names to mask, appended to the base list. |
 | `extraSensitiveHeaders` | `string[]` | `[]` | Additional header names to redact, appended to the base list. |
+| `knownRoutePrefixes` | `string[]` | `[]` | Prefixes owned by the application. A `Cannot METHOD /path` message whose path starts with one of them bypasses all base and extra skip patterns, so it remains eligible for persistence. Merged with auto-detected prefixes. |
+| `autoDetectRoutes` | `boolean` | `true` | Lazily inspect the Nest/Express router once and add prefixes (up to the first two static path segments) for registered routes to `knownRoutePrefixes`. Set to `false` to use only the manual list. |
 | `persistence` | `ErrorPersistenceAdapter` | `undefined` | Optional adapter for DB persistence. Use `PrismaErrorPersistenceAdapter` or implement your own. |
-| `onError` | `(error: ErrorRecord) => Promise<void>` | `undefined` | Async callback invoked after a new error is persisted. Not called for crawlers or duplicates. |
-| `logger` | `FilterLogger` | `undefined` | Custom logger. Must expose `error`, `warn`, `info`, and `debug` methods. Falls back to `console`. |
+| `onError` | `(error: ErrorRecord) => Promise<void>` | `undefined` | Async callback invoked with a newly created persisted record when notification gates pass. Its errors are logged and do not prevent the response or built-in email attempt. |
+| `transformMessage` | `(message: string \| string[], exception: unknown, request: Request) => string \| string[]` | `undefined` | Replace the extracted message before throttling, logging, skip matching, deduplication, persistence, and client-message construction. |
+| `transformResponse` | `(response: Record<string, unknown>, exception: unknown, request: Request) => Record<string, unknown>` | `undefined` | Replace the final response object immediately before `response.status(...).json(...)`. It is not run for methods handled by `skipMethods`, which return early. |
+| `logger` | `FilterLogger` | `undefined` | Custom logger. Must expose `error`, `warn`, `info`, and `debug` methods. Falls back to Nest's `Logger`. |
+| `emailNotification` | `EmailNotificationConfig` | `undefined` | Built-in email delivery alongside (not instead of) `onError`. Requires `enabled: true`, a non-empty `toEmails`, and an `EmailNotificationAdapter`; each recipient receives a separately rendered notification. |
+
+`EmailNotificationConfig` consists of `enabled: boolean`, `toEmails: string[]`,
+`adapter: EmailNotificationAdapter`, and optional
+`userResolver: (userId: string) => Promise<UserInfo | null>`. The adapter implements
+`sendNotification({ to, subject, html, action? }): Promise<void>`. If the persisted
+record has a `triggeredById`, `userResolver` can supply optional `name`, `email`, and
+`role` values for the template. Resolver or delivery failures are logged and do not
+change the HTTP response; one recipient failing does not prevent attempts to the
+others.
+
+### Protect known routes
+
+Known prefixes override skip-pattern matches in `Cannot METHOD /path` messages. Use
+manual prefixes when routes cannot be discovered, or disable discovery for fully
+explicit behavior:
+
+```typescript
+AllExceptionsModule.forRoot({
+  appName: 'my-api',
+  appEnvironment: 'production',
+  autoDetectRoutes: false,
+  knownRoutePrefixes: ['/api/v1', '/auth'],
+});
+```
+
+### Transform messages and responses
+
+```typescript
+AllExceptionsModule.forRoot({
+  appName: 'my-api',
+  appEnvironment: 'production',
+  transformMessage: (message) =>
+    message === 'File too large' ? 'Upload exceeds 10 MB' : message,
+  transformResponse: (response) => ({ ...response, service: 'my-api' }),
+});
+```
+
+### Configure email notifications
+
+`EmailNotificationAdapter` is transport-agnostic; wrap the mail provider used by
+your application:
+
+```typescript
+import {
+  AllExceptionsModule,
+  EmailNotificationAdapter,
+} from '@soamee/exceptions-filter';
+
+class AppEmailAdapter implements EmailNotificationAdapter {
+  constructor(private readonly mailer: MailerService) {}
+
+  async sendNotification({ to, subject, html, action }) {
+    await this.mailer.sendMail({ to, subject, html, headers: { action } });
+  }
+}
+
+AllExceptionsModule.forRoot({
+  appName: 'my-api',
+  appEnvironment: 'production',
+  persistence: errorPersistence,
+  emailNotification: {
+    enabled: true,
+    adapter: new AppEmailAdapter(mailer),
+    toEmails: ['ops@example.com', 'developers@example.com'],
+    userResolver: async (userId) => users.findNotificationUser(userId),
+  },
+});
+```
+
+### Persistence, deduplication, crawlers, and notifications
+
+Both notification mechanisms—`onError` and `emailNotification`—share the same
+gate. They run only after `persistence.create(...)` successfully returns a **new**
+record. Consequently, configuring either notification mechanism without
+`persistence` sends nothing. With deduplication enabled (the default), a record
+returned by `findDuplicate(...)` is not new and produces no notification.
+
+Notifications are also suppressed for detected crawlers (when crawler detection
+is enabled), messages omitted by base or extra skip patterns, throttled requests,
+methods in `skipMethods`, persistence failures, and requests whose URL starts with
+`/error-exceptions-messages`, `/exceptions`, or `/errors`. Crawler errors may still
+be persisted; internal exception-route errors may also be persisted; it is the
+notification step that is suppressed. `onError` and email are independent once
+the gate passes: an `onError` failure is logged, then email is still attempted.
 
 ## Skip Patterns
 
@@ -143,7 +232,11 @@ console.log(shouldSkipException('Cannot GET /wp-admin')); // true
 
 ## Crawler Detection
 
-When `enableCrawlerDetection` is `true` (default), the filter inspects the `User-Agent` header and request behaviour. Errors from detected crawlers are persisted to DB as normal, but the `onError` callback is skipped — preventing email/notification noise from bot traffic.
+When `enableCrawlerDetection` is `true` (it is opt-in and defaults to `false`),
+the filter inspects the `User-Agent` header and request behaviour. Errors from
+detected crawlers are persisted to DB as normal, but both the `onError` callback
+and built-in email delivery are skipped—preventing notification noise from bot
+traffic.
 
 Detected categories:
 
