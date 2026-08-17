@@ -487,7 +487,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
   private extractLastActions(
     headers: Record<string, string | string[] | undefined>,
   ): string | undefined {
-    return this.getHeaderValue(headers["x-last-actions"]);
+    // Current bugfinder clients send the structured action envelope in
+    // x-bugfinder. Keep x-last-actions as a backwards-compatible fallback.
+    return this.getHeaderValue(
+      headers["x-bugfinder"] ?? headers["x-last-actions"],
+    );
   }
 
   private extractActionElapsedMs(
