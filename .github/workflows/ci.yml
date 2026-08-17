@@ -12,9 +12,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - node: 18
-            nest: 9
-            express: 4
           - node: 20
             nest: 10
             express: 4
