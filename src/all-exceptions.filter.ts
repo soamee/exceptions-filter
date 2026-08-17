@@ -135,7 +135,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ip = request.ip ?? "unknown";
     const throttleKey = `${ip}:${Array.isArray(message) ? message.join(",") : message}`;
     const throttleMs = this.config.throttleMs ?? 1000;
-    const isThrottled = this.isThrottled(throttleKey, throttleMs);
+    const isThrottlingEnabled = this.config.enableThrottling !== false;
+    const isThrottled =
+      isThrottlingEnabled && this.isThrottled(throttleKey, throttleMs);
 
     // Log to console
     const messageStr = Array.isArray(message) ? message.join(", ") : message;
@@ -163,11 +165,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (!shouldSkip && this.config.persistence) {
       // Throttle: if throttled, skip DB persistence
-      if (this.config.enableThrottling && isThrottled) {
+      if (isThrottled) {
         // Skip persistence for throttled errors
       } else {
         // Mark as recent
-        if (this.config.enableThrottling) {
+        if (isThrottlingEnabled) {
           this.recentErrors.set(throttleKey, new Date());
           this.cleanupRecentErrors();
         }
@@ -189,7 +191,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     // Crawler detection
-    if (this.config.enableCrawlerDetection) {
+    if (this.config.enableCrawlerDetection !== false) {
       const crawlerInfo = detectCrawler(request);
       isCrawler = crawlerInfo.isCrawler;
     }

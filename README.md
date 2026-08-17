@@ -85,10 +85,10 @@ export class AppModule {}
 |---|---|---|---|
 | `appName` | `string` | — | Required. Identifier attached to every error record. |
 | `appEnvironment` | `string` | — | Required. Environment tag (e.g. `production`, `staging`). |
-| `enableCrawlerDetection` | `boolean` | `true` | Detect bot/crawler user-agents and suppress `onError` for them. |
+| `enableCrawlerDetection` | `boolean` | `true` | Detect bot/crawler user-agents and suppress `onError` for them; disabled only when explicitly set to `false`. |
 | `enableRequestOriginMetadata` | `boolean` | `true` | Extract client IP, forwarded headers, referer, and origin from the request. |
 | `enableSentry` | `boolean` | `false` | Capture unhandled 500s to Sentry (requires `@sentry/nestjs` peer dep). |
-| `enableThrottling` | `boolean` | `true` | Deduplicate rapid identical errors from the same IP within `throttleMs`. |
+| `enableThrottling` | `boolean` | `true` | Deduplicate rapid identical errors from the same IP within `throttleMs`; disabled only when explicitly set to `false`. |
 | `enableDeduplication` | `boolean` | `true` | Skip DB persistence when a matching error already exists within the dedup window. |
 | `hideInternalErrors` | `boolean` | `true` | Replace unhandled 500 messages with a generic string before sending to the client. |
 | `throttleMs` | `number` | `1000` | Milliseconds within which identical errors from the same IP are collapsed. |
