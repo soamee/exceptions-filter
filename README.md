@@ -204,6 +204,41 @@ const safeHeaders = sanitizeHeaders(req.headers);
 const safeBody = sanitizeBody(req.body, ['myExtraField']);
 ```
 
+### Query strings and URLs
+
+`sanitizeQuery` applies the same case-insensitive field list as
+`sanitizeBody`. It accepts scalar values, arrays, and nested objects, and
+returns a new value without mutating its input. In addition to the field names
+above, the common query spellings `access_token` and `api-key` are included.
+
+`sanitizeUrl` preserves the pathname, fragment, and non-sensitive query
+parameters while replacing every sensitive parameter value with `"******"`.
+Both absolute URLs (`https://example.com/path?...`) and relative URLs
+(`/path?...`) are supported. Query names and values are decoded and safely
+re-encoded with the platform `URL` API, so equivalent encoding may be
+normalized (for example, a space can become `+`). Repeated parameters remain
+repeated. A malformed URL is never echoed back: the function returns
+`"[MALFORMED URL]"` instead. `getUrlPathname` returns only the pathname and uses
+the same placeholder for malformed input.
+
+```typescript
+import {
+  sanitizeQuery,
+  sanitizeUrl,
+  getUrlPathname,
+} from '@soamee/exceptions-filter';
+
+const safeQuery = sanitizeQuery(req.query, ['privateKey']);
+const safeUrl = sanitizeUrl('/users?access_token=secret&page=2');
+// /users?access_token=******&page=2
+const path = getUrlPathname(safeUrl); // /users
+```
+
+The exception filter uses these sanitized values for logging, duplicate
+matching, and persisted `requestUrl`, `requestQuery`, and `requestPath` data.
+The response's `path` field contains only the pathname, never its query string
+or fragment.
+
 ## Prisma Schema
 
 If you use `PrismaErrorPersistenceAdapter`, add this model to your `schema.prisma`:

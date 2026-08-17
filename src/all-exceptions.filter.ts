@@ -16,8 +16,13 @@ import {
 } from "./interfaces/filter-config.interface";
 import type { ErrorResponse } from "./interfaces/error-response.interface";
 import type { FilterLogger } from "./interfaces/logger.interface";
-import { sanitizeHeaders } from "./sanitization";
-import { sanitizeBody } from "./sanitization";
+import {
+  getUrlPathname,
+  sanitizeBody,
+  sanitizeHeaders,
+  sanitizeQuery,
+  sanitizeUrl,
+} from "./sanitization";
 import { shouldSkipException } from "./skip-patterns";
 import { detectCrawler, extractRequestOrigin } from "./detection";
 import { renderExceptionEmail } from "./email/exception-email.template";
@@ -108,6 +113,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // Check skipMethods → early return
     const skipMethods = this.config.skipMethods ?? ["HEAD", "MKCOL"];
     const method = request.method ?? "";
+    const sanitizedUrl = sanitizeUrl(
+      request.url,
+      this.config.extraSensitiveFields,
+    );
+    const sanitizedPath = getUrlPathname(sanitizedUrl);
+    const sanitizedQuery = sanitizeQuery(
+      request.query,
+      this.config.extraSensitiveFields,
+    );
     if (skipMethods.includes(method)) {
       const clientMessage = this.getClientMessage(
         status,
@@ -139,7 +153,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     // Log to console
     const messageStr = Array.isArray(message) ? message.join(", ") : message;
-    const logMessage = `[${this.config.appName}] ${method} ${request.url} - ${status} - ${messageStr}`;
+    const logMessage = `[${this.config.appName}] ${method} ${sanitizedUrl} - ${status} - ${messageStr}`;
     if (status >= 500) {
       this.logger.error("AllExceptionsFilter", logMessage);
     } else if (status >= 400) {
@@ -179,6 +193,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
           message: messageStr,
           status,
           error,
+          sanitizedUrl,
+          sanitizedPath,
+          sanitizedQuery,
         });
         if (result) {
           errorId = result.record.id;
@@ -301,7 +318,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response: Record<string, unknown> = {
       statusCode: status,
       error,
-      path: request.url,
+      path: getUrlPathname(request.url),
       method: request.method,
       timestamp: new Date(),
       message,
@@ -340,8 +357,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
     message: string;
     status: number;
     error: string;
+    sanitizedUrl: string;
+    sanitizedPath: string;
+    sanitizedQuery: unknown;
   }): Promise<{ record: import("./interfaces/error-record.interface").ErrorRecord; isNew: boolean } | null> {
-    const { exception, request, message } = params;
+    const {
+      exception,
+      request,
+      message,
+      sanitizedUrl,
+      sanitizedPath,
+      sanitizedQuery,
+    } = params;
     const persistence = this.config.persistence;
     if (!persistence) return null;
 
@@ -358,7 +385,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
           stackTrace:
             exception instanceof Error ? exception.stack : undefined,
           requestMethod: request.method,
-          requestUrl: request.url,
+          requestUrl: sanitizedUrl,
           requestBody: request.body
             ? JSON.stringify(
                 sanitizeBody(request.body, this.config.extraSensitiveFields),
@@ -399,10 +426,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
         stackTrace:
           exception instanceof Error ? exception.stack : undefined,
         requestMethod: request.method,
-        requestUrl: request.url,
+        requestUrl: sanitizedUrl,
         requestHeaders: JSON.stringify(sanitizedHeaders),
         requestQuery: request.query
-          ? JSON.stringify(request.query)
+          ? JSON.stringify(sanitizedQuery)
           : undefined,
         requestBody: sanitizedBody
           ? JSON.stringify(sanitizedBody)
@@ -419,7 +446,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
           request.headers["x-correlation-id"] ??
             request.headers["x-request-id"],
         ),
-        requestPath: request.url,
+        requestPath: sanitizedPath,
         requestContext: this.formatRequestContext(
           this.extractScreenContext(request.headers),
         ),
