@@ -49,3 +49,10 @@ export type {
   SessionContext as BugfinderSessionContext,
   ActionCategory as BugfinderActionCategory,
 } from "./email";
+export {
+  ClientErrorsModule,
+  SourceMapResolver,
+  LocalSourceMapStorage,
+  S3SourceMapStorage,
+} from "./client-errors";
+export type { ClientErrorsModuleConfig, SourceMapStorage } from "./client-errors";

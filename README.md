@@ -324,6 +324,164 @@ Example:
 }
 ```
 
+## Client Error Reporting
+
+`@soamee/exceptions-filter` ships a ready-to-use `ClientErrorsModule` that receives errors from your web, React, React Native, and iOS/Android clients, resolves minified stack traces against uploaded source maps, and persists them through the same `ErrorPersistenceAdapter` used by the server-side filter.
+
+### Backend — `ClientErrorsModule.register(...)`
+
+Install the required peer deps if not already present:
+
+```bash
+npm install @nestjs/platform-express class-validator class-transformer
+```
+
+Register the module in your NestJS app:
+
+```typescript
+import { ClientErrorsModule, LocalSourceMapStorage } from '@soamee/exceptions-filter';
+import { PrismaErrorPersistenceAdapter } from '@soamee/exceptions-filter';
+
+@Module({
+  imports: [
+    ClientErrorsModule.register({
+      // Where source maps are stored (local or S3)
+      sourceMapStorage: new LocalSourceMapStorage({ basePath: './sourcemaps' }),
+      // Reuse the same persistence adapter as the server filter
+      persistence: new PrismaErrorPersistenceAdapter(prisma),
+      // Secret key required when uploading source maps via CLI/CI
+      apiKey: process.env.SOURCEMAP_API_KEY,
+      // Optional: called after each new unique client error is persisted
+      onError: async (error) => {
+        await mailer.sendAlert(error);
+      },
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+This registers two endpoints:
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/client-errors` | `POST` | Receive a client error report; returns `{ errorId }` |
+| `/client-errors/sourcemaps` | `POST` | Upload a source map file (requires `x-sourcemap-api-key` header) |
+
+Use `S3SourceMapStorage` instead of `LocalSourceMapStorage` to store maps in an S3-compatible bucket:
+
+```typescript
+import { S3SourceMapStorage } from '@soamee/exceptions-filter';
+import { S3Client } from '@aws-sdk/client-s3';
+
+new S3SourceMapStorage({
+  client: new S3Client({ region: 'eu-west-1' }),
+  bucket: 'my-sourcemaps-bucket',
+})
+```
+
+### Web — `initErrorReporter(...)`
+
+```typescript
+import { initErrorReporter } from '@soamee/exceptions-filter/client/web';
+
+initErrorReporter({
+  endpoint: 'https://api.myapp.com/client-errors',
+  platform: 'web',
+  appVersion: import.meta.env.VITE_APP_VERSION,
+});
+// Uncaught errors and unhandled promise rejections are now captured automatically.
+```
+
+### React — `SoameeErrorBoundary`
+
+```tsx
+import { SoameeErrorBoundary } from '@soamee/exceptions-filter/client/react';
+
+function App() {
+  return (
+    <SoameeErrorBoundary
+      endpoint="https://api.myapp.com/client-errors"
+      platform="web"
+      appVersion={process.env.REACT_APP_VERSION}
+      fallback={<p>Something went wrong.</p>}
+    >
+      <Router />
+    </SoameeErrorBoundary>
+  );
+}
+```
+
+### React Native — `initErrorReporter` + `setCurrentScreen`
+
+```typescript
+import { initErrorReporter, setCurrentScreen } from '@soamee/exceptions-filter/client/react-native';
+
+// In your app entry point
+initErrorReporter({
+  endpoint: 'https://api.myapp.com/client-errors',
+  platform: 'ios',          // or 'android'
+  appVersion: '2.1.0',
+});
+
+// In each screen component
+setCurrentScreen('/home');
+```
+
+### CLI — `npx upload-sourcemaps`
+
+After building your app, upload the generated `.map` files to the backend:
+
+```bash
+npx upload-sourcemaps \
+  --api-url https://api.myapp.com/client-errors/sourcemaps \
+  --api-key   "$SOURCEMAP_API_KEY" \
+  --platform  web \
+  --version   "$APP_VERSION" \
+  --dir       ./dist
+```
+
+Options:
+
+| Flag | Description |
+|---|---|
+| `--api-url` | Full URL to the `/client-errors/sourcemaps` route |
+| `--api-key` | Secret matching `ClientErrorsModule.register({ apiKey })` |
+| `--platform` | `web`, `ios`, or `android` |
+| `--version` | App version string (e.g. `1.4.2`) |
+| `--dir` | Directory to scan for `*.map` files |
+
+### CI/CD — GitHub Actions example
+
+```yaml
+name: Upload Source Maps
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  upload-maps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci && npm run build
+
+      - name: Upload source maps
+        run: |
+          npx upload-sourcemaps \
+            --api-url ${{ vars.API_URL }}/client-errors/sourcemaps \
+            --api-key  ${{ secrets.SOURCEMAP_API_KEY }} \
+            --platform web \
+            --version  ${{ github.sha }} \
+            --dir      ./dist
+```
+
 ## License
 
 MIT — Copyright (c) 2026 Tataki
