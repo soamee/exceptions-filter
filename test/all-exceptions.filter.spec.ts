@@ -214,6 +214,48 @@ describe("AllExceptionsFilter", () => {
       expect(persistence.findDuplicate).toHaveBeenCalled();
       expect(persistence.create).not.toHaveBeenCalled();
     });
+
+    it("uses sanitized URL, query, body, and pathname for persistence", async () => {
+      const persistence = {
+        findDuplicate: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: "new-1",
+          exceptionMessage: "Failure",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      };
+      const filter = new AllExceptionsFilter(
+        createConfig({ persistence, enableThrottling: false }),
+      );
+      const host = createMockHost({
+        url: "/items?token=url-secret&view=grid",
+        query: { token: "query-secret", filters: [{ access_token: "nested" }] },
+        body: { password: "body-secret" },
+      });
+
+      await filter.catch(new Error("Failure"), host);
+
+      expect(persistence.findDuplicate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestUrl: "/items?token=******&view=grid",
+          requestBody: JSON.stringify({ password: "******" }),
+        }),
+      );
+      expect(persistence.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestUrl: "/items?token=******&view=grid",
+          requestPath: "/items",
+          requestQuery: JSON.stringify({
+            token: "******",
+            filters: [{ access_token: "******" }],
+          }),
+        }),
+      );
+      expect(host.switchToHttp().getResponse<any>().status().json).toHaveBeenCalledWith(
+        expect.objectContaining({ path: "/items" }),
+      );
+    });
   });
 
   describe("onError callback", () => {

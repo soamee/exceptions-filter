@@ -1,5 +1,15 @@
 export * from "./interfaces";
-export { sanitizeHeaders, sanitizeBody, BASE_SENSITIVE_FIELDS, BASE_SENSITIVE_HEADERS } from "./sanitization";
+export {
+  sanitizeHeaders,
+  sanitizeBody,
+  sanitizeQuery,
+  sanitizeUrl,
+  getUrlPathname,
+  REDACTED_QUERY_VALUE,
+  MALFORMED_URL_PLACEHOLDER,
+  BASE_SENSITIVE_FIELDS,
+  BASE_SENSITIVE_HEADERS,
+} from "./sanitization";
 export {
   botSkipPatterns,
   userErrorSkipPatterns,

@@ -14,7 +14,9 @@ export const BASE_SENSITIVE_FIELDS: string[] = [
   "apiKey",
   "secretKey",
   "accessToken",
+  "access_token",
   "refreshToken",
+  "api-key",
   "creditCard",
   "ssn",
 ];
