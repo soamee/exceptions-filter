@@ -1,5 +1,7 @@
 import type { ErrorRecord, CreateErrorData } from "../interfaces/error-record.interface";
 import type { UserInfo } from "../interfaces/email-notification.interface";
+import { parseEnvelope } from "./envelope-parser";
+import type { BugfinderAction, BugfinderEnvelope } from "./bugfinder-types";
 
 export interface RenderExceptionEmailParams {
   error: ErrorRecord & CreateErrorData;
@@ -57,10 +59,64 @@ const decodeBase64 = (str: string): string => {
   }
 };
 
+const ACTION_ICONS: Record<string, string> = {
+  navigation: "&#128681;",
+  click: "&#128070;",
+  form: "&#128228;",
+  input: "&#9998;",
+  api: "&#127760;",
+  error: "&#128165;",
+  visibility: "&#128065;",
+  custom: "&#9679;",
+};
+
+const formatActionTime = (timestamp: string): string => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "--:--:--";
+  return date.toISOString().slice(11, 19);
+};
+
+const formatStructuredTimeline = (envelope: BugfinderEnvelope): string => {
+  const actions = [...envelope.actions].reverse();
+  const rows = actions.map((action: BugfinderAction, idx) => {
+    const isLast = idx === actions.length - 1;
+    const method = action.method ? ` <strong>[${escapeHtml(action.method)}]</strong>` : "";
+    const elapsed = action.elapsed == null
+      ? ""
+      : ` <span style="color:#868e96;font-size:10px;">+${action.elapsed < 1000 ? `${action.elapsed}ms` : `${(action.elapsed / 1000).toFixed(1)}s`}</span>`;
+
+    return `<tr>
+      <td style="width:58px;padding:7px 6px;color:#868e96;font:11px monospace;vertical-align:top;">${formatActionTime(action.timestamp)}</td>
+      <td style="width:22px;padding:6px 2px;text-align:center;vertical-align:top;">${ACTION_ICONS[action.category] || ACTION_ICONS.custom}</td>
+      <td style="padding:7px 8px;border-left:2px solid ${isLast ? "#dc3545" : "#dee2e6"};background:${isLast ? "#fff5f5" : "transparent"};color:${isLast ? "#dc3545" : "#495057"};font-size:12px;">${escapeHtml(action.action)}${method}${elapsed}</td>
+    </tr>`;
+  }).join("\n");
+
+  const path = envelope.path?.currentPath
+    ? `<div style="padding-bottom:10px;color:#6c757d;font-size:11px;">Current screen: <strong>${escapeHtml(envelope.path.currentPath)}</strong>${envelope.path.previousPath ? ` &middot; Previous: ${escapeHtml(envelope.path.previousPath)}` : ""}</div>`
+    : "";
+
+  return `
+    <div style="font-size:14px;font-weight:bold;color:#1a1a2e;padding-bottom:4px;">
+      User Action Timeline
+      <span style="font-size:11px;color:#6c757d;font-weight:normal;margin-left:4px;">(${actions.length} actions)</span>
+    </div>
+    ${path}
+    <table cellpadding="0" cellspacing="0" width="100%">${rows}</table>`;
+};
+
 const formatUserActionsTimeline = (
   lastUserActions: string | undefined,
 ): string => {
   if (!lastUserActions || lastUserActions.trim() === "") return "";
+
+  // New bugfinder clients send a base64-encoded structured envelope. Render
+  // its actions as an actual chronological timeline rather than showing the
+  // encoded payload as a single action.
+  const envelope = parseEnvelope(lastUserActions);
+  if (envelope?.actions && Array.isArray(envelope.actions)) {
+    return formatStructuredTimeline(envelope);
+  }
 
   // Decode base64 if needed (x-last-actions header is base64-encoded)
   const decoded = decodeBase64(lastUserActions);
