@@ -173,9 +173,9 @@ describe("AllExceptionsFilter", () => {
   });
 
   describe("throttling", () => {
-    it("should throttle repeated errors from same IP", async () => {
+    it("should throttle repeated errors from same IP by default", async () => {
       const persistence = { findDuplicate: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: "1", exceptionMessage: "x", createdAt: new Date(), updatedAt: new Date() }) };
-      const config = createConfig({ persistence, enableThrottling: true, throttleMs: 5000 });
+      const config = createConfig({ persistence, throttleMs: 5000 });
       const filter = new AllExceptionsFilter(config);
       const host1 = createMockHost();
       const host2 = createMockHost();
@@ -241,11 +241,11 @@ describe("AllExceptionsFilter", () => {
       expect(onError).not.toHaveBeenCalled();
     });
 
-    it("should not call onError when crawler detected", async () => {
+    it("should not call onError when crawler detection is enabled by default", async () => {
       const created = { id: "new-1", exceptionMessage: "Test", createdAt: new Date(), updatedAt: new Date() };
       const persistence = { findDuplicate: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) };
       const onError = jest.fn();
-      const config = createConfig({ persistence, onError, enableCrawlerDetection: true, enableThrottling: false });
+      const config = createConfig({ persistence, onError, enableThrottling: false });
       const filter = new AllExceptionsFilter(config);
       const host = createMockHost({ headers: { "user-agent": "Googlebot/2.1" } });
 
@@ -253,6 +253,25 @@ describe("AllExceptionsFilter", () => {
 
       expect(persistence.create).toHaveBeenCalled();
       expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("should call onError for a crawler when crawler detection is disabled", async () => {
+      const created = { id: "new-1", exceptionMessage: "Test", createdAt: new Date(), updatedAt: new Date() };
+      const persistence = { findDuplicate: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) };
+      const onError = jest.fn();
+      const config = createConfig({
+        persistence,
+        onError,
+        enableCrawlerDetection: false,
+        enableThrottling: false,
+      });
+      const filter = new AllExceptionsFilter(config);
+      const host = createMockHost({ headers: { "user-agent": "Googlebot/2.1" } });
+
+      await filter.catch(new Error("Test"), host);
+
+      expect(persistence.create).toHaveBeenCalled();
+      expect(onError).toHaveBeenCalledWith(created);
     });
   });
 
