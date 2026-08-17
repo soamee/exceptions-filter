@@ -22,6 +22,12 @@ import { shouldSkipException } from "./skip-patterns";
 import { detectCrawler, extractRequestOrigin } from "./detection";
 import { renderExceptionEmail } from "./email/exception-email.template";
 import type { CreateErrorData } from "./interfaces/error-record.interface";
+import type {
+  NotificationDecisionContext,
+  NotificationPolicyRule,
+  NotificationSeverity,
+} from "./interfaces/filter-config.interface";
+import type { CrawlerDetectionMetadata } from "./detection/crawler-detector";
 
 let ForbiddenError: any;
 try {
@@ -159,7 +165,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let errorId: string | undefined;
     let persistedRecord: import("./interfaces/error-record.interface").ErrorRecord | null = null;
     let isNewRecord = false;
-    let isCrawler = false;
+    let crawlerMetadata = this.getDefaultCrawlerMetadata();
 
     if (!shouldSkip && this.config.persistence) {
       // Throttle: if throttled, skip DB persistence
@@ -190,8 +196,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     // Crawler detection
     if (this.config.enableCrawlerDetection) {
-      const crawlerInfo = detectCrawler(request);
-      isCrawler = crawlerInfo.isCrawler;
+      crawlerMetadata = detectCrawler(request);
     }
 
     // onError callback — only for newly created records, not duplicates
@@ -199,10 +204,21 @@ export class AllExceptionsFilter implements ExceptionFilter {
       !shouldSkip &&
       isNewRecord &&
       persistedRecord &&
-      !isCrawler &&
+      !crawlerMetadata.isCrawler &&
       !this.isFromExceptionController(request.url);
 
-    if (shouldNotify && persistedRecord) {
+    const policyAllowsNotification =
+      shouldNotify && persistedRecord
+        ? await this.evaluateNotificationPolicy({
+            exception,
+            request,
+            record: persistedRecord,
+            status,
+            crawler: crawlerMetadata,
+          })
+        : false;
+
+    if (policyAllowsNotification && persistedRecord) {
       if (this.config.onError) {
         try {
           await this.config.onError(persistedRecord);
@@ -236,6 +252,120 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     response.status(status).json(errorResponse);
+  }
+
+  private async evaluateNotificationPolicy(params: {
+    exception: unknown;
+    request: Request;
+    record: import("./interfaces/error-record.interface").ErrorRecord;
+    status: number;
+    crawler: CrawlerDetectionMetadata;
+  }): Promise<boolean> {
+    const policy = this.config.notificationPolicy;
+    if (!policy) return true;
+
+    const severity = this.getSeverity(params.status);
+    const matches = (rule: NotificationPolicyRule) =>
+      this.matchesNotificationRule(rule, params.status, severity, params.request);
+
+    if (policy.exclude?.some(matches)) return false;
+    if (policy.include && !policy.include.some(matches)) return false;
+    if (!policy.decide) return true;
+
+    const context: NotificationDecisionContext = {
+      exception: this.sanitizeException(params.exception),
+      request: {
+        method: params.request.method ?? "",
+        path: params.request.path ?? params.request.url ?? "",
+        ip: params.request.ip,
+        headers: sanitizeHeaders(
+          params.request.headers,
+          this.config.extraSensitiveHeaders,
+        ),
+        query: sanitizeBody(
+          params.request.query,
+          this.config.extraSensitiveFields,
+        ),
+        body: sanitizeBody(
+          params.request.body,
+          this.config.extraSensitiveFields,
+        ),
+      },
+      record: params.record,
+      status: params.status,
+      severity,
+      crawler: params.crawler,
+    };
+
+    try {
+      return await policy.decide(context);
+    } catch (decisionError) {
+      this.logger.error(
+        "AllExceptionsFilter",
+        `notificationPolicy decision failed: ${decisionError}`,
+      );
+      return false;
+    }
+  }
+
+  private matchesNotificationRule(
+    rule: NotificationPolicyRule,
+    status: number,
+    severity: NotificationSeverity,
+    request: Request,
+  ): boolean {
+    if (rule.statuses && !rule.statuses.includes(status)) return false;
+    if (rule.severities && !rule.severities.includes(severity)) return false;
+    const method = (request.method ?? "").toUpperCase();
+    if (rule.methods && !rule.methods.some((value) => value.toUpperCase() === method)) {
+      return false;
+    }
+    const path = request.path ?? request.url ?? "";
+    if (
+      rule.paths &&
+      !rule.paths.some((value) =>
+        typeof value === "string"
+          ? path === value || path.startsWith(value.endsWith("/") ? value : `${value}/`)
+          : (value.lastIndex = 0, value.test(path)),
+      )
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  private getSeverity(status: number): NotificationSeverity {
+    if (status >= 500) return "error";
+    if (status >= 400) return "warning";
+    return "info";
+  }
+
+  private sanitizeException(exception: unknown): NotificationDecisionContext["exception"] {
+    if (exception instanceof Error) {
+      return { name: exception.name, message: exception.message, stack: exception.stack };
+    }
+    return {
+      name: typeof exception,
+      message: this.extractMessage(exception).toString(),
+    };
+  }
+
+  private getDefaultCrawlerMetadata(): CrawlerDetectionMetadata {
+    return {
+      isCrawler: false,
+      crawlerType: null,
+      crawlerDescription: null,
+      crawlerCategory: null,
+      crawlerPurpose: null,
+      crawlerDocumentationUrl: null,
+      isLegitimate: null,
+      matchedSignals: [],
+      behavioralSignals: [],
+      requestPatternAnalysis: [],
+      userAgent: null,
+      confidenceLevel: "none",
+      recommendation: null,
+    };
   }
 
   private extractErrorField(exception: HttpException): string {

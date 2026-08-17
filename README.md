@@ -99,7 +99,58 @@ export class AppModule {}
 | `extraSensitiveHeaders` | `string[]` | `[]` | Additional header names to redact, appended to the base list. |
 | `persistence` | `ErrorPersistenceAdapter` | `undefined` | Optional adapter for DB persistence. Use `PrismaErrorPersistenceAdapter` or implement your own. |
 | `onError` | `(error: ErrorRecord) => Promise<void>` | `undefined` | Async callback invoked after a new error is persisted. Not called for crawlers or duplicates. |
+| `notificationPolicy` | `NotificationPolicy` | `undefined` | Filters both `onError` and email notifications by status, severity, method, path, or a safe custom decision. |
 | `logger` | `FilterLogger` | `undefined` | Custom logger. Must expose `error`, `warn`, `info`, and `debug` methods. Falls back to `console`. |
+
+## Notification policies
+
+Policies are applied after the existing safeguards (new persisted record, no crawler,
+no skipped pattern, and no exception-controller route) and before both `onError` and
+email delivery. With no policy, behavior is unchanged. A matching `exclude` rule wins
+over `include` and the custom `decide` callback; the callback runs last and failures
+are logged and treated as a decision not to notify.
+
+Notify only for server errors (severity `error` corresponds to HTTP 5xx):
+
+```typescript
+notificationPolicy: {
+  include: [{ severities: ['error'] }],
+}
+```
+
+Exclude health checks while retaining all other existing notifications:
+
+```typescript
+notificationPolicy: {
+  exclude: [{ paths: [/^\/health(?:\/|$)/, '/ready', '/live'] }],
+}
+```
+
+Sample repetitive errors deterministically (about one in ten records in this simple
+example; use a shared counter/store when sampling must be coordinated across replicas):
+
+```typescript
+let repeatedErrorCount = 0;
+
+notificationPolicy: {
+  decide: ({ status, request, record, exception, crawler }) => {
+    // request headers/body/query have already been sanitized. The exception is a
+    // snapshot rather than the original object; record is the persisted record.
+    if (status >= 500 && request.path === '/api/repetitive-error') {
+      repeatedErrorCount += 1;
+      return repeatedErrorCount % 10 === 1;
+    }
+    return true;
+  },
+}
+```
+
+Each field inside a rule is combined with AND; separate rules are combined with OR.
+String paths match the exact path and its descendants, while `RegExp` paths allow
+custom matching. Methods are case-insensitive. The callback receives HTTP status,
+derived severity (`info`, `warning`, or `error`), crawler metadata, the persisted
+record, a safe exception snapshot, and a request snapshot whose sensitive headers,
+body fields, and query fields are redacted.
 
 ## Skip Patterns
 

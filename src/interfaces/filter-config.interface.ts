@@ -3,6 +3,55 @@ import { ErrorPersistenceAdapter } from "./error-persistence.interface";
 import { ErrorRecord } from "./error-record.interface";
 import { EmailNotificationConfig } from "./email-notification.interface";
 import { FilterLogger } from "./logger.interface";
+import type { CrawlerDetectionMetadata } from "../detection/crawler-detector";
+
+export type NotificationSeverity = "info" | "warning" | "error";
+
+export interface NotificationPolicyRule {
+  /** Exact HTTP statuses matched by this rule. */
+  statuses?: number[];
+  severities?: NotificationSeverity[];
+  /** Case-insensitive HTTP methods. */
+  methods?: string[];
+  /** Exact/prefix strings or regular expressions matched against the request path. */
+  paths?: Array<string | RegExp>;
+}
+
+export interface SanitizedNotificationException {
+  name: string;
+  message: string;
+  stack?: string;
+}
+
+export interface SanitizedNotificationRequest {
+  method: string;
+  path: string;
+  ip?: string;
+  headers: Record<string, unknown>;
+  query: unknown;
+  body: unknown;
+}
+
+export interface NotificationDecisionContext {
+  /** A safe snapshot; the original exception/request objects are never exposed. */
+  exception: SanitizedNotificationException;
+  request: SanitizedNotificationRequest;
+  record: ErrorRecord;
+  status: number;
+  severity: NotificationSeverity;
+  crawler: CrawlerDetectionMetadata;
+}
+
+export interface NotificationPolicy {
+  /** When present, at least one inclusion rule must match. */
+  include?: NotificationPolicyRule[];
+  /** Exclusions take precedence over includes and the custom decision. */
+  exclude?: NotificationPolicyRule[];
+  /** Final advanced decision, evaluated only after declarative rules allow notification. */
+  decide?: (
+    context: NotificationDecisionContext,
+  ) => boolean | Promise<boolean>;
+}
 
 export interface ExceptionsFilterConfig {
   appName: string;
@@ -36,6 +85,9 @@ export interface ExceptionsFilterConfig {
   persistence?: ErrorPersistenceAdapter;
 
   onError?: (error: ErrorRecord) => Promise<void>;
+
+  /** Optional filtering policy shared by onError and email notifications. */
+  notificationPolicy?: NotificationPolicy;
 
   /** Transform the error message before it's used in response/logging/persistence.
    *  Useful for enriching messages like "File too large" with actual/max sizes. */

@@ -256,6 +256,137 @@ describe("AllExceptionsFilter", () => {
     });
   });
 
+  describe("notification policy", () => {
+    const created = {
+      id: "policy-1",
+      exceptionMessage: "Test",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    function notificationConfig(overrides: Partial<ExceptionsFilterConfig>) {
+      return createConfig({
+        persistence: {
+          findDuplicate: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue(created),
+        },
+        enableThrottling: false,
+        ...overrides,
+      });
+    }
+
+    it("includes notifications by HTTP status, severity, method, and path", async () => {
+      const onError = jest.fn();
+      const config = notificationConfig({
+        onError,
+        notificationPolicy: {
+          include: [{ statuses: [503], severities: ["error"], methods: ["post"], paths: ["/api/jobs"] }],
+        },
+      });
+
+      await new AllExceptionsFilter(config).catch(
+        new HttpException("Unavailable", 503),
+        createMockHost({ method: "POST", url: "/api/jobs/42" }),
+      );
+
+      expect(onError).toHaveBeenCalledWith(created);
+    });
+
+    it("excludes matching routes from both callbacks and email", async () => {
+      const onError = jest.fn();
+      const sendNotification = jest.fn();
+      const config = notificationConfig({
+        onError,
+        emailNotification: {
+          enabled: true,
+          toEmails: ["ops@example.com"],
+          adapter: { sendNotification },
+        },
+        notificationPolicy: { exclude: [{ paths: [/^\/health(?:\/|$)/] }] },
+      });
+
+      await new AllExceptionsFilter(config).catch(
+        new Error("Health dependency failed"),
+        createMockHost({ url: "/health/ready" }),
+      );
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(sendNotification).not.toHaveBeenCalled();
+    });
+
+    it("gives exclusions precedence over includes and the custom decision", async () => {
+      const onError = jest.fn();
+      const decide = jest.fn().mockReturnValue(true);
+      const config = notificationConfig({
+        onError,
+        notificationPolicy: {
+          include: [{ severities: ["error"] }],
+          exclude: [{ methods: ["GET"] }],
+          decide,
+        },
+      });
+
+      await new AllExceptionsFilter(config).catch(new Error("Test"), createMockHost());
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(decide).not.toHaveBeenCalled();
+    });
+
+    it("fails closed and logs when the custom decision throws", async () => {
+      const onError = jest.fn();
+      const logger = { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() };
+      const config = notificationConfig({
+        onError,
+        logger,
+        notificationPolicy: { decide: () => { throw new Error("decision boom"); } },
+      });
+
+      await new AllExceptionsFilter(config).catch(new Error("Test"), createMockHost());
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledWith(
+        "AllExceptionsFilter",
+        expect.stringContaining("notificationPolicy decision failed"),
+      );
+    });
+
+    it("passes only sanitized request data to the custom decision", async () => {
+      const decide = jest.fn().mockReturnValue(false);
+      const config = notificationConfig({ notificationPolicy: { decide } });
+
+      await new AllExceptionsFilter(config).catch(
+        new Error("Test"),
+        createMockHost({
+          headers: { authorization: "Bearer secret", "user-agent": "browser" },
+          body: { password: "secret", safe: "value" },
+          query: { token: "secret" },
+        }),
+      );
+
+      expect(decide).toHaveBeenCalledWith(expect.objectContaining({
+        exception: expect.objectContaining({ name: "Error", message: "Test" }),
+        request: expect.objectContaining({
+          headers: expect.objectContaining({ authorization: "[REDACTED]" }),
+          body: { password: "******", safe: "value" },
+          query: { token: "******" },
+        }),
+        record: created,
+        status: 500,
+        severity: "error",
+        crawler: expect.objectContaining({ isCrawler: false }),
+      }));
+    });
+
+    it("keeps existing configurations notifying without a policy", async () => {
+      const onError = jest.fn();
+      const config = notificationConfig({ onError });
+
+      await new AllExceptionsFilter(config).catch(new Error("Test"), createMockHost());
+
+      expect(onError).toHaveBeenCalledWith(created);
+    });
+  });
+
   describe("knownRoutePrefixes", () => {
     it("should NOT skip errors matching a known route prefix even if skip pattern matches", async () => {
       const created = { id: "new-1", exceptionMessage: "Test", createdAt: new Date(), updatedAt: new Date() };
