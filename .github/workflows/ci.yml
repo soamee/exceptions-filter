@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  compatibility:
+    name: Node ${{ matrix.node }} / NestJS ${{ matrix.nest }} / Express ${{ matrix.express }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: 20
+            nest: 10
+            express: 4
+          - node: 24
+            nest: 11
+            express: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Install compatibility versions
+        run: npm install --no-save --no-package-lock @nestjs/common@${{ matrix.nest }} @nestjs/core@${{ matrix.nest }} @nestjs/testing@${{ matrix.nest }} express@${{ matrix.express }} @types/express@${{ matrix.express }}
+      - run: npm run build
+      - run: npm run lint
+      - run: npm test -- --runInBand
+      - run: npm run pack:check

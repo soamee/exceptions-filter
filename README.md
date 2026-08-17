@@ -14,6 +14,27 @@ Peer dependencies (must be present in your project):
 npm install @nestjs/common @nestjs/core express reflect-metadata
 ```
 
+## Supported Versions
+
+| Component | Supported versions |
+|---|---|
+| Node.js | 18 and later (CI covers 18, 20, and 24) |
+| NestJS (`@nestjs/common` and `@nestjs/core`) | 9, 10, and 11 |
+| Express | 4 and 5 |
+
+The minimum supported runtime is Node.js 18. CI tests the minimum combination
+(Node.js 18, NestJS 9, Express 4), the current combination (Node.js 24,
+NestJS 11, Express 5), and an intermediate Node.js 20/NestJS 10 combination.
+
+Prisma persistence, Sentry reporting, and CASL error handling are optional
+public integrations. Install only the peers used by your application:
+
+```bash
+npm install @prisma/client # PrismaErrorPersistenceAdapter
+npm install @sentry/nestjs # enableSentry
+npm install @casl/ability  # ForbiddenError handling
+```
+
 ## Quick Start
 
 Minimal setup with no DB and no notifications:
