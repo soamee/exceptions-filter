@@ -39,6 +39,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger: FilterLogger;
   private readonly recentErrors = new Map<string, Date>();
   private detectedRoutePrefixes: string[] | null = null;
+  private routeInspectionWarningEmitted = false;
 
   constructor(
     @Inject(EXCEPTIONS_FILTER_CONFIG)
@@ -529,14 +530,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
   private detectRegisteredRoutes(): string[] {
     try {
       const httpAdapter = this.httpAdapterHost?.httpAdapter;
-      if (!httpAdapter) return [];
-
-      const instance = httpAdapter.getInstance?.();
-      if (!instance?._router?.stack) return [];
+      const instance = httpAdapter?.getInstance?.();
+      const router = this.getExpressRouter(instance);
+      if (!router) {
+        this.warnRouteInspectionUnavailable();
+        return [];
+      }
 
       const paths = new Set<string>();
 
-      for (const layer of instance._router.stack) {
+      for (const layer of router.stack) {
         if (layer.route?.path) {
           const routePath = String(layer.route.path);
           const prefix = this.extractRoutePrefix(routePath);
@@ -559,8 +562,40 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
       return Array.from(paths);
     } catch {
+      this.warnRouteInspectionUnavailable();
       return [];
     }
+  }
+
+  /**
+   * Returns the router for the explicitly supported Express application shapes.
+   * Express 4 stores it in `_router`; Express 5 exposes it as `router`.
+   */
+  private getExpressRouter(instance: unknown): { stack: any[] } | null {
+    if (!instance || (typeof instance !== "object" && typeof instance !== "function")) {
+      return null;
+    }
+
+    const app = instance as {
+      _router?: { stack?: unknown };
+      router?: { stack?: unknown };
+    };
+    const candidates = [app._router, app.router];
+    for (const candidate of candidates) {
+      if (candidate && Array.isArray(candidate.stack)) {
+        return { stack: candidate.stack };
+      }
+    }
+    return null;
+  }
+
+  private warnRouteInspectionUnavailable(): void {
+    if (this.routeInspectionWarningEmitted) return;
+    this.routeInspectionWarningEmitted = true;
+    this.logger.warn(
+      "AllExceptionsFilter",
+      "Unable to inspect the Express router for automatic route detection; provide knownRoutePrefixes explicitly.",
+    );
   }
 
   /**

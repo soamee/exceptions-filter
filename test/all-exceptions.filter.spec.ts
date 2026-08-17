@@ -305,27 +305,33 @@ describe("AllExceptionsFilter", () => {
   });
 
   describe("autoDetectRoutes", () => {
-    function createMockHttpAdapterHost(routes: Array<{ path: string; methods: Record<string, boolean> }>) {
+    function createMockHttpAdapterHost(
+      routes: Array<{ path: string; methods: Record<string, boolean> }>,
+      routerProperty: "_router" | "router" = "_router",
+    ) {
       const stack = routes.map(r => ({
         route: { path: r.path, methods: r.methods },
       }));
       return {
         httpAdapter: {
           getInstance: () => ({
-            _router: { stack },
+            [routerProperty]: { stack },
           }),
         },
       } as any;
     }
 
-    it("should auto-detect routes and protect them from skip patterns", async () => {
+    it.each([
+      ["Express 4", "_router"],
+      ["Express 5", "router"],
+    ] as const)("should auto-detect the %s router structure", async (_version, routerProperty) => {
       const created = { id: "new-1", exceptionMessage: "Test", createdAt: new Date(), updatedAt: new Date() };
       const persistence = { findDuplicate: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) };
       const config = createConfig({ persistence, enableThrottling: false });
       const httpAdapterHost = createMockHttpAdapterHost([
         { path: "/api/v1/users", methods: { get: true, post: true } },
         { path: "/api/v1/upload", methods: { post: true } },
-      ]);
+      ], routerProperty);
       const filter = new AllExceptionsFilter(config, httpAdapterHost);
       const host = createMockHost();
 
@@ -393,16 +399,29 @@ describe("AllExceptionsFilter", () => {
       expect(persistence.create).not.toHaveBeenCalled();
     });
 
-    it("should handle httpAdapterHost with no _router", async () => {
+    it("should warn only once for an unsupported router structure", async () => {
       const persistence = { findDuplicate: jest.fn(), create: jest.fn() };
-      const config = createConfig({ persistence });
+      const logger = {
+        error: jest.fn(),
+        warn: jest.fn(),
+        info: jest.fn(),
+        debug: jest.fn(),
+      };
+      const config = createConfig({ persistence, logger });
       const httpAdapterHost = { httpAdapter: { getInstance: () => ({}) } } as any;
       const filter = new AllExceptionsFilter(config, httpAdapterHost);
-      const host = createMockHost();
+      const firstHost = createMockHost();
+      const secondHost = createMockHost();
 
-      await filter.catch(new Error("Cannot GET /wp-admin/"), host);
+      await filter.catch(new Error("Cannot GET /wp-admin/"), firstHost);
+      await filter.catch(new Error("Cannot GET /wp-admin/"), secondHost);
 
       expect(persistence.create).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        "AllExceptionsFilter",
+        expect.stringContaining("knownRoutePrefixes"),
+      );
     });
 
     it("should cache detected routes (only detect once)", async () => {

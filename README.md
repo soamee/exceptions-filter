@@ -14,6 +14,25 @@ Peer dependencies (must be present in your project):
 npm install @nestjs/common @nestjs/core express reflect-metadata
 ```
 
+### Express compatibility and route detection
+
+Express 4 and Express 5 are supported (`express >=4 <6`). Automatic route
+detection recognizes both router layouts used by those major versions:
+Express 4's internal `_router` property and Express 5's `router` property.
+Because these are framework internals, an adapter or a future Express layout
+may prevent inspection. When that happens, the filter logs one diagnostic
+warning and continues normally. Set `knownRoutePrefixes` to make route-aware
+skip filtering deterministic (and optionally set `autoDetectRoutes: false`):
+
+```typescript
+AllExceptionsModule.forRoot({
+  appName: 'my-api',
+  appEnvironment: process.env.NODE_ENV,
+  knownRoutePrefixes: ['/api/v1', '/webhooks'],
+  autoDetectRoutes: false,
+});
+```
+
 ## Quick Start
 
 Minimal setup with no DB and no notifications:
@@ -95,6 +114,8 @@ export class AppModule {}
 | `deduplicationWindowHours` | `number` | `24` | Hours back to search for a duplicate error record. |
 | `skipMethods` | `string[]` | `['HEAD', 'MKCOL']` | HTTP methods that always receive an early empty response without logging. |
 | `extraSkipPatterns` | `RegExp[]` | `[]` | Additional patterns appended to the base skip list. |
+| `autoDetectRoutes` | `boolean` | `true` | Inspect the supported Express 4/5 router shape once to protect registered routes from skip patterns. |
+| `knownRoutePrefixes` | `string[]` | `[]` | Explicit route prefixes; use these when router inspection is unavailable or deterministic behavior is required. |
 | `extraSensitiveFields` | `string[]` | `[]` | Additional body field names to mask, appended to the base list. |
 | `extraSensitiveHeaders` | `string[]` | `[]` | Additional header names to redact, appended to the base list. |
 | `persistence` | `ErrorPersistenceAdapter` | `undefined` | Optional adapter for DB persistence. Use `PrismaErrorPersistenceAdapter` or implement your own. |
