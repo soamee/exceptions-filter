@@ -1,5 +1,10 @@
 import type { BugfinderAction, BugfinderEnvelope, ActionCategory } from "./bugfinder-types";
 import { parseEnvelope } from "./envelope-parser";
+import {
+  buildTimeline,
+  formatSpan,
+  timelineSpanMs,
+} from "./action-timeline";
 
 const CATEGORY_ICONS: Record<ActionCategory, string> = {
   navigation: "&#128681;",
@@ -23,24 +28,6 @@ const CATEGORY_COLORS: Record<ActionCategory, string> = {
   custom: "#795548",
 };
 
-function formatTime(isoTimestamp: string): string {
-  try {
-    const d = new Date(isoTimestamp);
-    const hh = String(d.getUTCHours()).padStart(2, "0");
-    const mm = String(d.getUTCMinutes()).padStart(2, "0");
-    const ss = String(d.getUTCSeconds()).padStart(2, "0");
-    return `${hh}:${mm}:${ss}`;
-  } catch {
-    return "??:??:??";
-  }
-}
-
-function formatElapsed(ms?: number): string {
-  if (ms === undefined || ms === null) return "";
-  if (ms < 1000) return `+${ms}ms`;
-  return `+${(ms / 1000).toFixed(1)}s`;
-}
-
 /**
  * Format actions as HTML table rows for use inside an email template.
  * Actions are displayed in chronological order (oldest first).
@@ -48,22 +35,23 @@ function formatElapsed(ms?: number): string {
 export function formatActionsAsTimeline(actions: BugfinderAction[]): string {
   if (!actions || actions.length === 0) return "";
 
-  const chronological = [...actions].reverse();
-
-  return chronological
-    .map((a) => {
-      const time = formatTime(a.timestamp);
-      const icon = CATEGORY_ICONS[a.category] || CATEGORY_ICONS.custom;
-      const elapsed = formatElapsed(a.elapsed);
-      const method = a.method ? ` [${a.method}]` : "";
-      const elapsedPart = elapsed
-        ? ` <span style="color:#999;font-size:11px">${elapsed}</span>`
+  return buildTimeline(actions)
+    .map((entry) => {
+      const { action } = entry;
+      const time = entry.time || "??:??:??";
+      const icon = CATEGORY_ICONS[action.category] || CATEGORY_ICONS.custom;
+      const method = action.method ? ` [${action.method}]` : "";
+      const gapPart = entry.gapLabel
+        ? ` <span style="color:#999;font-size:11px">${entry.gapLabel}</span>`
+        : "";
+      const targetPart = entry.targetLabel
+        ? ` <span style="color:#999;font-size:11px;font-family:monospace">${entry.targetLabel}</span>`
         : "";
 
       return `<tr>
         <td style="padding:2px 8px;color:#999;font-size:12px;white-space:nowrap;font-family:monospace">${time}</td>
         <td style="padding:2px 4px;text-align:center">${icon}</td>
-        <td style="padding:2px 8px;font-size:13px;color:${CATEGORY_COLORS[a.category] || "#333"}">${a.action}${method}${elapsedPart}</td>
+        <td style="padding:2px 8px;font-size:13px;color:${CATEGORY_COLORS[action.category] || "#333"}">${action.action}${method}${targetPart}${gapPart}</td>
       </tr>`;
     })
     .join("\n");
@@ -76,10 +64,12 @@ export function formatTimelineMjml(actions: BugfinderAction[]): string {
   if (!actions || actions.length === 0) return "";
 
   const tableRows = formatActionsAsTimeline(actions);
+  const span = formatSpan(timelineSpanMs(buildTimeline(actions)));
+  const spanLabel = span ? `, ${span} span` : "";
 
   return `
     <mj-text font-size="16px" color="#424242" font-weight="bold">
-      User Action Timeline (${actions.length} actions):
+      User Action Timeline (${actions.length} actions${spanLabel}):
     </mj-text>
     <mj-table cellpadding="0" cellspacing="0" width="100%">
       ${tableRows}
@@ -160,15 +150,14 @@ export function formatEnvelopeToMjml(
 export function formatActionsAsPlainText(actions: BugfinderAction[]): string {
   if (!actions || actions.length === 0) return "";
 
-  const chronological = [...actions].reverse();
-
-  return chronological
-    .map((a) => {
-      const time = formatTime(a.timestamp);
-      const method = a.method ? ` [${a.method}]` : "";
-      const elapsed = formatElapsed(a.elapsed);
-      const elapsedPart = elapsed ? ` ${elapsed}` : "";
-      return `${time} [${a.category}] ${a.action}${method}${elapsedPart}`;
+  return buildTimeline(actions)
+    .map((entry) => {
+      const { action } = entry;
+      const time = entry.time || "??:??:??";
+      const method = action.method ? ` [${action.method}]` : "";
+      const target = entry.targetLabel ? ` ${entry.targetLabel}` : "";
+      const gapPart = entry.gapLabel ? ` ${entry.gapLabel}` : "";
+      return `${time} [${action.category}] ${action.action}${method}${target}${gapPart}`;
     })
     .join("\n");
 }

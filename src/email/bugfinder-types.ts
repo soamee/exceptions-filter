@@ -20,8 +20,14 @@ export interface BugfinderAction {
   timestamp: string;
   method?: string;
   path?: string;
+  /** Milliseconds since the previous action, as measured by the client. */
   elapsed?: number;
+  /** Human-readable target, usually a CSS-selector-ish string ("button#save"). */
   target?: string;
+  /** `id` attribute of the element the user interacted with, when it has one. */
+  targetId?: string;
+  /** `data-testid` (or equivalent) of the element, when it has one. */
+  targetTestId?: string;
   formName?: string;
 }
 

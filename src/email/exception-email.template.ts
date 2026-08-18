@@ -1,7 +1,14 @@
 import type { ErrorRecord, CreateErrorData } from "../interfaces/error-record.interface";
 import type { UserInfo } from "../interfaces/email-notification.interface";
 import { parseEnvelope } from "./envelope-parser";
-import type { BugfinderAction, BugfinderEnvelope } from "./bugfinder-types";
+import type { BugfinderEnvelope } from "./bugfinder-types";
+import type { TimelineEntry } from "./action-timeline";
+import {
+  buildTimeline,
+  formatSpan,
+  parseLegacyActions,
+  timelineSpanMs,
+} from "./action-timeline";
 
 export interface RenderExceptionEmailParams {
   error: ErrorRecord & CreateErrorData;
@@ -48,12 +55,24 @@ const escapeHtml = (str: string): string => {
     .replace(/"/g, "&quot;");
 };
 
+const CONTROL_OR_INVALID = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/;
+
 const decodeBase64 = (str: string): string => {
+  const compact = str.replace(/\s+/g, "");
+  if (compact.length === 0 || compact.length % 4 !== 0) return str;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) return str;
+
   try {
-    const decoded = Buffer.from(str, "base64").toString("utf-8");
-    // If decoded looks like readable text (not binary garbage), use it
-    if (/^[\x20-\x7E\s]+$/.test(decoded)) return decoded;
-    return str;
+    const buffer = Buffer.from(compact, "base64");
+    // Non-canonical base64 means the value was plain text that happens to
+    // use only base64 characters — keep it as-is.
+    if (buffer.toString("base64") !== compact) return str;
+
+    const decoded = buffer.toString("utf-8");
+    // Accented text is expected (action labels are localised); control
+    // characters or replacement chars mean this was not really base64.
+    if (!decoded || CONTROL_OR_INVALID.test(decoded)) return str;
+    return decoded;
   } catch {
     return str;
   }
@@ -70,39 +89,62 @@ const ACTION_ICONS: Record<string, string> = {
   custom: "&#9679;",
 };
 
-const formatActionTime = (timestamp: string): string => {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "--:--:--";
-  return date.toISOString().slice(11, 19);
+const formatActionRows = (entries: TimelineEntry[], showTime: boolean): string =>
+  entries
+    .map((entry) => {
+      const { action } = entry;
+      const method = action.method
+        ? ` <strong>[${escapeHtml(action.method)}]</strong>`
+        : "";
+      const target = entry.targetLabel
+        ? ` <span style="color:#868e96;font-size:10px;font-family:monospace;">${escapeHtml(entry.targetLabel)}</span>`
+        : "";
+      const timeCell = showTime
+        ? `<td style="width:62px;padding:7px 6px;color:#868e96;font:11px monospace;vertical-align:top;white-space:nowrap;">
+        ${entry.time || "--:--:--"}
+        ${entry.gapLabel ? `<br/><span style="color:#adb5bd;font-size:10px;">${entry.gapLabel}</span>` : ""}
+      </td>`
+        : "";
+      const inlineGap =
+        !showTime && entry.gapLabel
+          ? ` <span style="color:#868e96;font-size:10px;">${entry.gapLabel}</span>`
+          : "";
+
+      return `<tr>
+      <td style="width:26px;padding:7px 4px;color:#adb5bd;font:11px monospace;vertical-align:top;">${entry.index}</td>
+      ${timeCell}
+      <td style="width:22px;padding:6px 2px;text-align:center;vertical-align:top;">${ACTION_ICONS[action.category] || ACTION_ICONS.custom}</td>
+      <td style="padding:7px 8px;border-left:2px solid ${entry.isLast ? "#dc3545" : "#dee2e6"};background:${entry.isLast ? "#fff5f5" : "transparent"};color:${entry.isLast ? "#dc3545" : "#495057"};font-size:12px;font-weight:${entry.isLast ? "bold" : "normal"};">${escapeHtml(action.action)}${method}${target}${inlineGap}</td>
+    </tr>`;
+    })
+    .join("\n");
+
+const formatTimelineTable = (
+  entries: TimelineEntry[],
+  title: string,
+  pathHtml: string,
+): string => {
+  const showTime = entries.some((entry) => entry.time !== "");
+  const span = formatSpan(timelineSpanMs(entries));
+  const spanLabel = span ? ` &middot; ${span} span` : "";
+
+  return `
+    <div style="font-size:14px;font-weight:bold;color:#1a1a2e;padding-bottom:4px;">
+      ${title}
+      <span style="font-size:11px;color:#6c757d;font-weight:normal;margin-left:4px;">(${entries.length} actions${spanLabel})</span>
+    </div>
+    ${pathHtml}
+    <table cellpadding="0" cellspacing="0" width="100%">${formatActionRows(entries, showTime)}</table>`;
 };
 
 const formatStructuredTimeline = (envelope: BugfinderEnvelope): string => {
-  const actions = [...envelope.actions].reverse();
-  const rows = actions.map((action: BugfinderAction, idx) => {
-    const isLast = idx === actions.length - 1;
-    const method = action.method ? ` <strong>[${escapeHtml(action.method)}]</strong>` : "";
-    const elapsed = action.elapsed == null
-      ? ""
-      : ` <span style="color:#868e96;font-size:10px;">+${action.elapsed < 1000 ? `${action.elapsed}ms` : `${(action.elapsed / 1000).toFixed(1)}s`}</span>`;
-
-    return `<tr>
-      <td style="width:58px;padding:7px 6px;color:#868e96;font:11px monospace;vertical-align:top;">${formatActionTime(action.timestamp)}</td>
-      <td style="width:22px;padding:6px 2px;text-align:center;vertical-align:top;">${ACTION_ICONS[action.category] || ACTION_ICONS.custom}</td>
-      <td style="padding:7px 8px;border-left:2px solid ${isLast ? "#dc3545" : "#dee2e6"};background:${isLast ? "#fff5f5" : "transparent"};color:${isLast ? "#dc3545" : "#495057"};font-size:12px;">${escapeHtml(action.action)}${method}${elapsed}</td>
-    </tr>`;
-  }).join("\n");
+  const entries = buildTimeline(envelope.actions);
 
   const path = envelope.path?.currentPath
     ? `<div style="padding-bottom:10px;color:#6c757d;font-size:11px;">Current screen: <strong>${escapeHtml(envelope.path.currentPath)}</strong>${envelope.path.previousPath ? ` &middot; Previous: ${escapeHtml(envelope.path.previousPath)}` : ""}</div>`
     : "";
 
-  return `
-    <div style="font-size:14px;font-weight:bold;color:#1a1a2e;padding-bottom:4px;">
-      User Action Timeline
-      <span style="font-size:11px;color:#6c757d;font-weight:normal;margin-left:4px;">(${actions.length} actions)</span>
-    </div>
-    ${path}
-    <table cellpadding="0" cellspacing="0" width="100%">${rows}</table>`;
+  return formatTimelineTable(entries, "User Action Timeline", path);
 };
 
 const formatUserActionsTimeline = (
@@ -118,37 +160,16 @@ const formatUserActionsTimeline = (
     return formatStructuredTimeline(envelope);
   }
 
-  // Decode base64 if needed (x-last-actions header is base64-encoded)
+  // Decode base64 if needed (x-last-actions header is base64-encoded) and
+  // parse the flat format, which may carry category, element id and
+  // timestamp tokens per action.
   const decoded = decodeBase64(lastUserActions);
-  const actions = decoded.split(",").map((a) => a.trim()).filter(Boolean);
+  const entries = buildTimeline(parseLegacyActions(decoded), {
+    order: "chronological",
+  });
+  if (entries.length === 0) return "";
 
-  const rows = actions
-    .map((action, idx) => {
-      const isLast = idx === actions.length - 1;
-      const bgColor = isLast ? "#fff5f5" : "transparent";
-      const borderColor = isLast ? "#dc3545" : "#e9ecef";
-      const textColor = isLast ? "#dc3545" : "#495057";
-      const fontWeight = isLast ? "bold" : "normal";
-
-      return `<tr>
-        <td style="padding:6px 8px;color:#adb5bd;font-size:11px;white-space:nowrap;font-family:monospace;width:30px;vertical-align:top;">${idx + 1}</td>
-        <td style="padding:6px 8px;font-size:12px;color:${textColor};font-weight:${fontWeight};border-left:2px solid ${borderColor};background:${bgColor};">${escapeHtml(action)}</td>
-      </tr>`;
-    })
-    .join("\n");
-
-  return `
-    <table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:8px;">
-      <tr>
-        <td style="font-size:14px;font-weight:bold;color:#1a1a2e;padding:0 0 10px 0;">
-          User Actions
-          <span style="font-size:11px;color:#6c757d;font-weight:normal;margin-left:4px;">(${actions.length} actions)</span>
-        </td>
-      </tr>
-    </table>
-    <table cellpadding="0" cellspacing="0" width="100%">
-      ${rows}
-    </table>`;
+  return formatTimelineTable(entries, "User Actions", "");
 };
 
 /**

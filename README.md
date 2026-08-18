@@ -482,6 +482,74 @@ jobs:
             --dir      ./dist
 ```
 
+## User Action Timeline
+
+The exception email renders the user journey that led to the error. Actions come
+from the request headers the bugfinder client sends:
+
+| Header | Format |
+| --- | --- |
+| `x-bugfinder` | base64-encoded JSON envelope (preferred) |
+| `x-last-actions` | base64-encoded flat string (legacy fallback) |
+
+Every row shows the clock time of the action, the delay since the previous one,
+the category icon, the label, and the element the user interacted with:
+
+```
+1  09:12:58            Click: Seleccionar (1)                #select-1
+2  09:13:04  +6.1s     Focus: input                          #cms-title
+3  09:13:12  +8.5s     Click: Seleccionar de biblioteca      [data-testid="media-library-open"]
+7  09:13:41  +300ms    Navigate to /area-cliente/cms/1d45...
+```
+
+### Envelope format (`x-bugfinder`)
+
+Actions are sent newest-first:
+
+```json
+{
+  "path": { "currentPath": "/area-cliente/cms", "previousPath": "/area-cliente" },
+  "session": { "startedAt": "2026-08-18T09:12:00.000Z", "actionCount": 7 },
+  "actions": [
+    {
+      "action": "Click: Descartar",
+      "category": "click",
+      "timestamp": "2026-08-18T09:13:33.400Z",
+      "targetId": "cms-discard",
+      "targetTestId": "cms-discard-button",
+      "target": "button#cms-discard",
+      "method": "POST",
+      "elapsed": 12400
+    }
+  ]
+}
+```
+
+- `timestamp` drives both the clock column and the delay between actions.
+- The delay is always computed from consecutive timestamps; `elapsed` is only
+  used as a fallback when timestamps are missing or unparseable.
+- The element shown is `targetId`, then `targetTestId`, then the `id` found in
+  `target`, and finally the raw `target` selector.
+
+### Flat format (`x-last-actions`)
+
+Actions are separated by `,`, `→`, or newlines, in chronological order. Each
+action may carry optional pipe-separated tokens:
+
+```
+Click: Seleccionar (1) | [click] | #select-1 | @2026-08-18T09:12:58.000Z
+```
+
+| Token | Meaning |
+| --- | --- |
+| `[click]`, `[navigation]`, … | action category |
+| `[POST]`, `[GET]`, … | HTTP method |
+| `#element-id` | element id |
+| `@<ISO date>` or `@<epoch ms>` | timestamp |
+
+Unknown tokens stay part of the label, so clients that only send free text keep
+working — they just render as a numbered list without times.
+
 ## License
 
 MIT — Copyright (c) 2026 Tataki
