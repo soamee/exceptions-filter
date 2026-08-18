@@ -1,5 +1,15 @@
 export { parseEnvelope } from "./envelope-parser";
 export {
+  buildTimeline,
+  timelineSpanMs,
+  parseLegacyActions,
+  resolveElementId,
+  describeTarget,
+  formatGap,
+  formatSpan,
+} from "./action-timeline";
+export type { TimelineEntry } from "./action-timeline";
+export {
   formatActionsAsTimeline,
   formatTimelineMjml,
   formatSessionSummaryMjml,

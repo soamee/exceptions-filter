@@ -112,7 +112,7 @@ describe("formatTimelineMjml()", () => {
     expect(result).toContain("mj-text");
     expect(result).toContain("mj-table");
     expect(result).toContain("User Action Timeline");
-    expect(result).toContain(`(${sampleActions.length} actions)`);
+    expect(result).toContain(`(${sampleActions.length} actions, 10.0s span)`);
   });
 
   it("should return empty for empty actions", () => {

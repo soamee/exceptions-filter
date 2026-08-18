@@ -4,6 +4,16 @@ All notable changes to this package are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- The user action timeline now shows the clock time of each action and the delay since the previous one, so the journey can be read as a chronology instead of a flat list.
+- Actions can report the element the user interacted with (`targetId`, `targetTestId`, or an `id` inside `target`), rendered next to each step.
+- The legacy `x-last-actions` string now understands optional `[category]`, `[METHOD]`, `#element-id`, and `@timestamp` tokens per action, and is also split on `→` and newlines.
+
+### Fixed
+
+- Base64-encoded action lists containing accented characters are decoded instead of being rendered as the raw encoded payload.
+
 ### Changed
 
 - Node.js 18 is now the minimum supported runtime.

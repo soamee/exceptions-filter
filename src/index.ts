@@ -32,6 +32,13 @@ export { AllExceptionsFilter } from "./all-exceptions.filter";
 export { AllExceptionsModule } from "./all-exceptions.module";
 export {
   parseEnvelope,
+  buildTimeline,
+  timelineSpanMs,
+  parseLegacyActions,
+  resolveElementId,
+  describeTarget,
+  formatGap,
+  formatSpan,
   formatActionsAsTimeline,
   formatTimelineMjml,
   formatSessionSummaryMjml,
@@ -43,6 +50,7 @@ export {
 export type {
   RenderExceptionEmailParams,
   ResendExceptionEmailParams,
+  TimelineEntry,
   BugfinderAction,
   BugfinderEnvelope,
   PathContext as BugfinderPathContext,
