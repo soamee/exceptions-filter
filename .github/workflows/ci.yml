@@ -25,9 +25,12 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      # npm 11 discards packages passed to `npm install --no-save` when they
+      # are not declared in package.json, so the optional peers are saved
+      # into the disposable CI checkout instead.
       - name: Install compatibility versions
         run: |
-          npm install --no-save --no-package-lock \
+          npm install --save-dev --no-package-lock \
             @nestjs/common@${{ matrix.nest }} \
             @nestjs/core@${{ matrix.nest }} \
             @nestjs/testing@${{ matrix.nest }} \
