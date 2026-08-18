@@ -27,7 +27,16 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Install compatibility versions
-        run: npm install --no-save --no-package-lock @nestjs/common@${{ matrix.nest }} @nestjs/core@${{ matrix.nest }} @nestjs/testing@${{ matrix.nest }} express@${{ matrix.express }} @types/express@${{ matrix.express }}
+        run: |
+          npm install --no-save --no-package-lock \
+            @nestjs/common@${{ matrix.nest }} \
+            @nestjs/core@${{ matrix.nest }} \
+            @nestjs/testing@${{ matrix.nest }} \
+            @nestjs/platform-express@${{ matrix.nest }} \
+            express@${{ matrix.express }} \
+            @types/express@${{ matrix.express }} \
+            class-validator \
+            class-transformer
       - run: npm run build
       - run: npm run lint
       - run: npm test -- --runInBand

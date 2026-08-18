@@ -12,6 +12,7 @@ All notable changes to this package are documented in this file.
 
 ### Fixed
 
+- The compatibility CI matrix reinstalls the optional peers (`@nestjs/platform-express`, `class-validator`, `class-transformer`) that the pinned NestJS/Express install pruned, so the build step no longer fails on missing type declarations.
 - Base64-encoded action lists containing accented characters are decoded instead of being rendered as the raw encoded payload.
 
 ### Changed
