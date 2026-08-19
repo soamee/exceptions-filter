@@ -243,9 +243,9 @@ export function renderExceptionEmail(params: RenderExceptionEmailParams): {
               </td>
               <td style="width:34%;padding:12px;background:#f8f9fa;border-right:2px solid #fff;vertical-align:top;font-family:Arial,sans-serif;">
                 <strong style="font-size:10px;color:#6c757d;text-transform:uppercase;letter-spacing:0.5px;">Endpoint</strong><br/>
-                ${error.requestMethod ? `<span style="font-size:14px;color:#1a1a2e;font-family:monospace;font-weight:600;">${escapeHtml(error.requestMethod)}</span> ` : ""}
-                <span style="font-size:12px;color:#1a1a2e;font-family:monospace;">${escapeHtml(truncate(error.requestUrl, 40))}</span>
-                ${error.requestPath ? `<br/><span style="font-size:11px;color:#6c757d;">Frontend: ${escapeHtml(truncate(error.requestPath, 30))}</span>` : ""}
+                ${error.requestMethod ? `<span style="display:inline-block;margin-top:4px;background:#1a1a2e;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;font-weight:bold;font-family:monospace;">${escapeHtml(error.requestMethod)}</span>` : ""}
+                <div style="margin-top:4px;font-size:12px;color:#1a1a2e;font-family:monospace;word-break:break-all;line-height:1.4;">${escapeHtml(error.requestUrl || "")}</div>
+                ${error.requestPath && error.requestPath !== error.requestUrl ? `<div style="margin-top:4px;font-size:11px;color:#6c757d;word-break:break-all;">Frontend: ${escapeHtml(error.requestPath)}</div>` : ""}
               </td>
               <td style="width:33%;padding:12px;background:#f8f9fa;border-radius:0 6px 6px 0;vertical-align:top;font-family:Arial,sans-serif;">
                 <strong style="font-size:10px;color:#6c757d;text-transform:uppercase;letter-spacing:0.5px;">Client</strong><br/>
