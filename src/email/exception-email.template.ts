@@ -79,15 +79,35 @@ const decodeBase64 = (str: string): string => {
   }
 };
 
-const ACTION_ICONS: Record<string, string> = {
-  navigation: "&#128681;",
-  click: "&#128070;",
-  form: "&#128228;",
-  input: "&#9998;",
-  api: "&#127760;",
-  error: "&#128165;",
-  visibility: "&#128065;",
-  custom: "&#9679;",
+// Text tags instead of emoji: every email client renders them the same, they
+// inherit the text colour, and they stay readable when images are blocked.
+// (Inline SVG is not an option — Gmail strips it.)
+const ACTION_TAGS: Record<string, string> = {
+  navigation: "NAV",
+  click: "CLICK",
+  form: "FORM",
+  input: "INPUT",
+  api: "API",
+  error: "ERROR",
+  visibility: "VIEW",
+  custom: "&middot;",
+};
+
+const ACTION_TAG_COLORS: Record<string, string> = {
+  navigation: "#1971c2",
+  click: "#2f9e44",
+  form: "#e8590c",
+  input: "#7048e8",
+  api: "#0c8599",
+  error: "#e03131",
+  visibility: "#5c7cfa",
+  custom: "#adb5bd",
+};
+
+const formatActionTag = (category: string): string => {
+  const tag = ACTION_TAGS[category] || ACTION_TAGS.custom;
+  const color = ACTION_TAG_COLORS[category] || ACTION_TAG_COLORS.custom;
+  return `<span style="color:${color};font:9px Arial,sans-serif;letter-spacing:0.5px;">${tag}</span>`;
 };
 
 const formatActionRows = (entries: TimelineEntry[], showTime: boolean): string =>
@@ -138,7 +158,7 @@ const formatActionRows = (entries: TimelineEntry[], showTime: boolean): string =
       return `<tr>
       <td style="width:26px;padding:7px 4px;color:#adb5bd;font:11px monospace;vertical-align:top;">${entry.index}</td>
       ${timeCell}
-      <td style="width:22px;padding:6px 2px;text-align:center;vertical-align:top;">${ACTION_ICONS[action.category] || ACTION_ICONS.custom}</td>
+      <td style="width:40px;padding:8px 4px 7px 4px;text-align:right;vertical-align:top;">${formatActionTag(action.category)}</td>
       <td style="padding:7px 8px;border-left:2px solid ${borderColor};background:${background};color:${color};font-size:12px;font-weight:${weight};">${escapeHtml(action.action)}${method}${target}${origin}${inlineGap}</td>
     </tr>`;
     })

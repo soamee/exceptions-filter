@@ -6,15 +6,17 @@ import {
   timelineSpanMs,
 } from "./action-timeline";
 
-const CATEGORY_ICONS: Record<ActionCategory, string> = {
-  navigation: "&#128681;",
-  click: "&#128070;",
-  form: "&#128228;",
-  input: "&#9998;",
-  api: "&#127760;",
-  error: "&#128165;",
-  visibility: "&#128065;",
-  custom: "&#9679;",
+// Text tags instead of emoji, for the same reason as the HTML template:
+// consistent rendering across email clients without relying on emoji fonts.
+const CATEGORY_TAGS: Record<ActionCategory, string> = {
+  navigation: "NAV",
+  click: "CLICK",
+  form: "FORM",
+  input: "INPUT",
+  api: "API",
+  error: "ERROR",
+  visibility: "VIEW",
+  custom: "&middot;",
 };
 
 const CATEGORY_COLORS: Record<ActionCategory, string> = {
@@ -39,7 +41,7 @@ export function formatActionsAsTimeline(actions: BugfinderAction[]): string {
     .map((entry) => {
       const { action } = entry;
       const time = entry.time || "??:??:??";
-      const icon = CATEGORY_ICONS[action.category] || CATEGORY_ICONS.custom;
+      const tag = CATEGORY_TAGS[action.category] || CATEGORY_TAGS.custom;
       const method = action.method ? ` [${action.method}]` : "";
       const gapPart = entry.gapLabel
         ? ` <span style="color:#999;font-size:11px">${entry.gapLabel}</span>`
@@ -50,7 +52,7 @@ export function formatActionsAsTimeline(actions: BugfinderAction[]): string {
 
       return `<tr>
         <td style="padding:2px 8px;color:#999;font-size:12px;white-space:nowrap;font-family:monospace">${time}</td>
-        <td style="padding:2px 4px;text-align:center">${icon}</td>
+        <td style="padding:2px 4px;text-align:right;color:${CATEGORY_COLORS[action.category] || "#999"};font:9px Arial,sans-serif;letter-spacing:0.5px;white-space:nowrap;">${tag}</td>
         <td style="padding:2px 8px;font-size:13px;color:${CATEGORY_COLORS[action.category] || "#333"}">${action.action}${method}${targetPart}${gapPart}</td>
       </tr>`;
     })
