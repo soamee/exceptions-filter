@@ -28,7 +28,7 @@ describe("renderExceptionEmail() user actions", () => {
     });
 
     expect(html).toContain("User Action Timeline");
-    expect(html).toContain("Current screen: <strong>/checkout</strong>");
+    expect(html).toContain("Error on <strong style=\"color:#1a1a2e;font-family:monospace;\">/checkout</strong>");
     expect(html).toContain("[POST]");
     // Gap comes from the real distance between timestamps, not from the
     // client-reported elapsed (1500ms) which disagrees with them.
@@ -180,5 +180,81 @@ describe("renderExceptionEmail() user actions", () => {
 
     expect(html).not.toContain('<img src=x');
     expect(html).toContain("&lt;img src=x");
+  });
+});
+
+describe("renderExceptionEmail() page context", () => {
+  it("marks page changes and states where the user came from", () => {
+    const envelope: BugfinderEnvelope = {
+      path: { currentPath: "/checkout", previousPath: "/cart" },
+      actions: [
+        {
+          action: "Click: Pay",
+          category: "click",
+          timestamp: "2026-08-12T10:00:12.000Z",
+          path: "/checkout",
+        },
+        {
+          action: "Navigate to /checkout",
+          category: "navigation",
+          timestamp: "2026-08-12T10:00:10.000Z",
+          path: "/checkout",
+        },
+        {
+          action: "Click: Go to checkout",
+          category: "click",
+          timestamp: "2026-08-12T10:00:05.000Z",
+          path: "/cart",
+        },
+      ],
+      session: { startedAt: "2026-08-12T10:00:00.000Z", actionCount: 3 },
+    };
+
+    const { html } = renderExceptionEmail({
+      error: {
+        ...baseError,
+        lastUserActions: Buffer.from(JSON.stringify(envelope)).toString("base64"),
+      },
+      appName: "api",
+      appEnvironment: "test",
+      createdAt: "2026-08-12T10:00:12.000Z",
+    });
+
+    // Where the session started and where it ended.
+    expect(html).toContain(">/cart</strong>");
+    expect(html).toContain(">/checkout</strong>");
+    // Full page trail.
+    expect(html).toContain("/cart &rarr; /checkout");
+    // The navigation row says where it came from and is highlighted.
+    expect(html).toContain("from /cart");
+    expect(html).toContain("#1971c2");
+  });
+
+  it("derives the page trail from legacy navigation labels", () => {
+    const encoded = Buffer.from(
+      [
+        "WAITLIST_SIGNUP_SUBMIT | POST",
+        "Click: Join the Waitlist | [click]",
+        "Navigate to / | [navigation]",
+        "Navigate to /en | [navigation]",
+      ].join(", "),
+    ).toString("base64");
+
+    const { html } = renderExceptionEmail({
+      error: { ...baseError, lastUserActions: encoded },
+      appName: "api",
+      appEnvironment: "test",
+      createdAt: "2026-08-12T10:00:12.000Z",
+    });
+
+    // Legacy headers are newest-first, so the oldest action is rendered first
+    // and the action right before the error is the last (highlighted) row.
+    expect(html.indexOf("Navigate to /en")).toBeLessThan(
+      html.indexOf("WAITLIST_SIGNUP_SUBMIT"),
+    );
+    expect(html).toContain("/en &rarr; /");
+    expect(html).toContain("from /en");
+    // The bare HTTP verb is rendered as a method badge, not left in the label.
+    expect(html).toContain("WAITLIST_SIGNUP_SUBMIT <strong>[POST]</strong>");
   });
 });
