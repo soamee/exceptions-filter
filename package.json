@@ -1,6 +1,6 @@
 {
   "name": "@soamee/exceptions-filter",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Configurable NestJS global exception filter with skip patterns, sanitization, crawler detection, and DB persistence",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
