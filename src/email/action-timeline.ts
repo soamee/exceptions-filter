@@ -39,6 +39,12 @@ export interface TimelineEntry {
   elementId?: string;
   /** Element id when present, otherwise the raw target selector. */
   targetLabel?: string;
+  /** Page the action happened on, when it can be known. */
+  pagePath?: string;
+  /** Page the user came from, for actions that changed the page. */
+  fromPath?: string;
+  /** True when this action landed the user on a different page. */
+  isPageChange: boolean;
   /** True for the newest action — the one right before the error. */
   isLast: boolean;
 }
@@ -100,21 +106,65 @@ export function describeTarget(action: BugfinderAction): string | undefined {
 }
 
 /**
+ * Destination page of a navigation action: the `path` the client attached to
+ * it, or the target parsed out of labels such as "Navigate to /checkout".
+ *
+ * Returns undefined for actions that did not move the user.
+ */
+export function navigationTarget(action: BugfinderAction): string | undefined {
+  if (action.category !== "navigation") return undefined;
+
+  const path = action.path?.trim();
+  if (path) return path;
+
+  const label = action.action?.trim() ?? "";
+  const match = label.match(
+    /^(?:navigate(?:d)?\s+(?:to|a)|navigation|go(?:to)?|screen|route)\s*[:>-]?\s*(\S+)/i,
+  );
+  return match ? match[1] : undefined;
+}
+
+/**
+ * Infer whether a list of actions is newest-first or already chronological.
+ *
+ * Bugfinder clients buffer newest-first, so that stays the assumption when
+ * timestamps cannot settle it (legacy payloads carry none).
+ */
+export function detectOrder(
+  actions: BugfinderAction[],
+): "newest-first" | "chronological" {
+  const stamps = actions
+    .map((action) => toMillis(action.timestamp))
+    .filter((ms): ms is number => ms !== undefined);
+
+  for (let i = 1; i < stamps.length; i++) {
+    if (stamps[i] < stamps[i - 1]) return "newest-first";
+    if (stamps[i] > stamps[i - 1]) return "chronological";
+  }
+
+  return "newest-first";
+}
+
+/**
  * Normalise a list of actions into chronological timeline entries, computing
  * the delay between each action and the previous one.
  *
- * Bugfinder envelopes arrive newest-first, so that is the default order.
+ * Bugfinder envelopes arrive newest-first, so that is the default order;
+ * pass "auto" to infer the order from the timestamps instead.
  */
 export function buildTimeline(
   actions: BugfinderAction[] | undefined,
-  options: { order?: "newest-first" | "chronological" } = {},
+  options: { order?: "newest-first" | "chronological" | "auto" } = {},
 ): TimelineEntry[] {
   if (!actions || actions.length === 0) return [];
 
+  const order =
+    options.order === "auto" ? detectOrder(actions) : options.order;
   const chronological =
-    options.order === "chronological" ? [...actions] : [...actions].reverse();
+    order === "chronological" ? [...actions] : [...actions].reverse();
 
   let previousMs: number | undefined;
+  let currentPage: string | undefined;
 
   return chronological.map((action, idx) => {
     const timestampMs = toMillis(action.timestamp);
@@ -133,6 +183,24 @@ export function buildTimeline(
 
     if (timestampMs !== undefined) previousMs = timestampMs;
 
+    // Track which page each action happened on so the timeline can show the
+    // page the user came from and where they moved to. Navigation actions
+    // carry the destination; every other action inherits the page it ran on.
+    const destination = navigationTarget(action);
+    const reportedPage = action.path?.trim() || undefined;
+    let fromPath: string | undefined;
+    let isPageChange = false;
+
+    if (destination && destination !== currentPage) {
+      fromPath = currentPage;
+      isPageChange = currentPage !== undefined;
+      currentPage = destination;
+    } else if (!destination && reportedPage && reportedPage !== currentPage) {
+      fromPath = currentPage;
+      isPageChange = currentPage !== undefined;
+      currentPage = reportedPage;
+    }
+
     return {
       index: idx + 1,
       action,
@@ -142,6 +210,9 @@ export function buildTimeline(
       gapLabel: formatGap(gapMs),
       elementId: resolveElementId(action),
       targetLabel: describeTarget(action),
+      pagePath: currentPage,
+      fromPath,
+      isPageChange,
       isLast: idx === chronological.length - 1,
     };
   });
@@ -155,6 +226,19 @@ export function timelineSpanMs(entries: TimelineEntry[]): number | undefined {
   if (stamps.length < 2) return undefined;
   const span = Math.max(...stamps) - Math.min(...stamps);
   return span >= 0 ? span : undefined;
+}
+
+/**
+ * The pages the user went through, oldest first and without repeats, e.g.
+ * ["/en", "/", "/checkout"]. Empty when no action carries page information.
+ */
+export function timelineJourney(entries: TimelineEntry[]): string[] {
+  const pages: string[] = [];
+  for (const entry of entries) {
+    const page = entry.pagePath;
+    if (page && page !== pages[pages.length - 1]) pages.push(page);
+  }
+  return pages;
 }
 
 function parseLegacyTimestamp(token: string): string | undefined {
@@ -187,7 +271,9 @@ function parseLegacyTimestamp(token: string): string | undefined {
  * Unknown tokens are kept as part of the action label, so older clients that
  * only send free text keep rendering exactly as before.
  *
- * Returns actions in chronological order (oldest first).
+ * Actions are returned in the order they appeared in the header. Bugfinder
+ * clients emit them newest-first; use buildTimeline's "auto" order to let the
+ * timeline settle it from the timestamps when they are present.
  */
 export function parseLegacyActions(raw: string): BugfinderAction[] {
   return raw
@@ -207,6 +293,13 @@ export function parseLegacyActions(raw: string): BugfinderAction[] {
       for (const token of tokens) {
         if (!token) continue;
 
+        // Clients send the HTTP verb as a bare token ("SUBMIT | POST"),
+        // older ones bracketed it. Accept both so it never leaks into the label.
+        if (HTTP_METHODS.has(token.toUpperCase())) {
+          action.method = token.toUpperCase();
+          continue;
+        }
+
         const bracketed = token.match(/^\[(.+)\]$/);
         if (bracketed) {
           const value = bracketed[1].trim();
@@ -225,6 +318,11 @@ export function parseLegacyActions(raw: string): BugfinderAction[] {
 
         if (token.startsWith("#") && token.length > 1) {
           action.targetId = token;
+          continue;
+        }
+
+        if (token.startsWith("@testid:") && token.length > 8) {
+          action.targetTestId = token.slice(8);
           continue;
         }
 

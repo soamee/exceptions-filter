@@ -7,6 +7,7 @@ import {
   buildTimeline,
   formatSpan,
   parseLegacyActions,
+  timelineJourney,
   timelineSpanMs,
 } from "./action-timeline";
 
@@ -110,14 +111,79 @@ const formatActionRows = (entries: TimelineEntry[], showTime: boolean): string =
           ? ` <span style="color:#868e96;font-size:10px;">${entry.gapLabel}</span>`
           : "";
 
+      // A page change is the most useful landmark in the timeline, so it gets
+      // its own colour and states where the user came from.
+      const origin =
+        entry.isPageChange && entry.fromPath
+          ? ` <span style="color:#1971c2;font-size:10px;font-family:monospace;">from ${escapeHtml(entry.fromPath)}</span>`
+          : "";
+
+      const borderColor = entry.isLast
+        ? "#dc3545"
+        : entry.isPageChange
+          ? "#1971c2"
+          : "#dee2e6";
+      const background = entry.isLast
+        ? "#fff5f5"
+        : entry.isPageChange
+          ? "#f0f7ff"
+          : "transparent";
+      const color = entry.isLast
+        ? "#dc3545"
+        : entry.isPageChange
+          ? "#1971c2"
+          : "#495057";
+      const weight = entry.isLast || entry.isPageChange ? "bold" : "normal";
+
       return `<tr>
       <td style="width:26px;padding:7px 4px;color:#adb5bd;font:11px monospace;vertical-align:top;">${entry.index}</td>
       ${timeCell}
       <td style="width:22px;padding:6px 2px;text-align:center;vertical-align:top;">${ACTION_ICONS[action.category] || ACTION_ICONS.custom}</td>
-      <td style="padding:7px 8px;border-left:2px solid ${entry.isLast ? "#dc3545" : "#dee2e6"};background:${entry.isLast ? "#fff5f5" : "transparent"};color:${entry.isLast ? "#dc3545" : "#495057"};font-size:12px;font-weight:${entry.isLast ? "bold" : "normal"};">${escapeHtml(action.action)}${method}${target}${inlineGap}</td>
+      <td style="padding:7px 8px;border-left:2px solid ${borderColor};background:${background};color:${color};font-size:12px;font-weight:${weight};">${escapeHtml(action.action)}${method}${target}${origin}${inlineGap}</td>
     </tr>`;
     })
     .join("\n");
+
+/**
+ * Header line describing the pages involved: where the session started, the
+ * screen the error happened on, and the hops in between.
+ */
+const formatJourney = (
+  entries: TimelineEntry[],
+  fallbackPrevious?: string,
+  fallbackCurrent?: string,
+): string => {
+  const pages = timelineJourney(entries);
+
+  const startedOn = pages[0] ?? fallbackPrevious ?? fallbackCurrent;
+  const errorOn = fallbackCurrent ?? pages[pages.length - 1];
+
+  if (!startedOn && !errorOn) return "";
+
+  const summary = [
+    startedOn
+      ? `Started on <strong style="color:#1a1a2e;font-family:monospace;">${escapeHtml(startedOn)}</strong>`
+      : "",
+    errorOn && errorOn !== startedOn
+      ? `Error on <strong style="color:#1a1a2e;font-family:monospace;">${escapeHtml(errorOn)}</strong>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" &middot; ");
+
+  const hops =
+    fallbackCurrent && pages[pages.length - 1] !== fallbackCurrent
+      ? [...pages, fallbackCurrent]
+      : pages;
+  const trail =
+    hops.length > 1
+      ? `<div style="padding-top:3px;color:#868e96;font-size:11px;font-family:monospace;">${hops
+          .map((page) => escapeHtml(page))
+          .join(" &rarr; ")}</div>`
+      : "";
+
+  return `<div style="padding-bottom:10px;color:#6c757d;font-size:11px;">${summary}${trail}</div>`;
+};
 
 const formatTimelineTable = (
   entries: TimelineEntry[],
@@ -139,12 +205,13 @@ const formatTimelineTable = (
 
 const formatStructuredTimeline = (envelope: BugfinderEnvelope): string => {
   const entries = buildTimeline(envelope.actions);
+  const journey = formatJourney(
+    entries,
+    envelope.path?.previousPath,
+    envelope.path?.currentPath,
+  );
 
-  const path = envelope.path?.currentPath
-    ? `<div style="padding-bottom:10px;color:#6c757d;font-size:11px;">Current screen: <strong>${escapeHtml(envelope.path.currentPath)}</strong>${envelope.path.previousPath ? ` &middot; Previous: ${escapeHtml(envelope.path.previousPath)}` : ""}</div>`
-    : "";
-
-  return formatTimelineTable(entries, "User Action Timeline", path);
+  return formatTimelineTable(entries, "User Action Timeline", journey);
 };
 
 const formatUserActionsTimeline = (
@@ -164,12 +231,12 @@ const formatUserActionsTimeline = (
   // parse the flat format, which may carry category, element id and
   // timestamp tokens per action.
   const decoded = decodeBase64(lastUserActions);
-  const entries = buildTimeline(parseLegacyActions(decoded), {
-    order: "chronological",
-  });
+  // Clients buffer actions newest-first; the flat header keeps that order, so
+  // let the timeline infer it instead of assuming it is already chronological.
+  const entries = buildTimeline(parseLegacyActions(decoded), { order: "auto" });
   if (entries.length === 0) return "";
 
-  return formatTimelineTable(entries, "User Actions", "");
+  return formatTimelineTable(entries, "User Actions", formatJourney(entries));
 };
 
 /**
