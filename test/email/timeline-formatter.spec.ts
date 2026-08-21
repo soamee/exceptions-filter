@@ -81,10 +81,12 @@ describe("formatActionsAsTimeline()", () => {
     expect(result).toContain("#9C27B0"); // input
   });
 
-  it("should include category icons", () => {
+  it("should tag each row with its category", () => {
     const result = formatActionsAsTimeline(sampleActions);
-    // At least one icon entity
-    expect(result).toContain("&#");
+    // Plain text tags instead of emoji, so no email client has to fall back
+    // to an emoji font.
+    expect(result).toContain("NAV");
+    expect(result).toContain("CLICK");
   });
 
   it("should return empty for no actions", () => {

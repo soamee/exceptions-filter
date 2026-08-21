@@ -503,8 +503,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
   private extractScreenContext(
     headers: Record<string, string | string[] | undefined>,
   ): string | undefined {
-    const screen = this.getHeaderValue(headers["x-screen-context"]);
-    return screen;
+    // Bugfinder clients send "x-path" as "<previous page> > <current page>",
+    // which is the same screen context other clients put in x-screen-context.
+    return this.getHeaderValue(
+      headers["x-screen-context"] ?? headers["x-path"],
+    );
   }
 
   private formatRequestContext(

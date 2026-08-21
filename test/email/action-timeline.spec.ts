@@ -1,5 +1,8 @@
 import {
   buildTimeline,
+  detectOrder,
+  navigationTarget,
+  timelineJourney,
   describeTarget,
   formatGap,
   formatSpan,
@@ -174,5 +177,83 @@ describe("parseLegacyActions()", () => {
 
   it("ignores empty entries", () => {
     expect(parseLegacyActions(" , ,")).toEqual([]);
+  });
+});
+
+describe("page context", () => {
+  it("reads the destination of a navigation from the action path", () => {
+    expect(
+      navigationTarget({
+        action: "Navigate to /checkout",
+        category: "navigation",
+        timestamp: "",
+        path: "/checkout",
+      }),
+    ).toBe("/checkout");
+  });
+
+  it("parses the destination out of the label when there is no path", () => {
+    expect(
+      navigationTarget({
+        action: "Navigate to /en",
+        category: "navigation",
+        timestamp: "",
+      }),
+    ).toBe("/en");
+    expect(
+      navigationTarget({ action: "Click: Pay", category: "click", timestamp: "" }),
+    ).toBeUndefined();
+  });
+
+  it("flags the entries that changed the page and where they came from", () => {
+    const entries = buildTimeline([
+      { action: "Click: Pay", category: "click", timestamp: "", path: "/checkout" },
+      { action: "Navigate to /checkout", category: "navigation", timestamp: "" },
+      { action: "Click: Go", category: "click", timestamp: "", path: "/cart" },
+    ]);
+
+    expect(entries.map((e) => e.pagePath)).toEqual([
+      "/cart",
+      "/checkout",
+      "/checkout",
+    ]);
+    // The first action starts the session — it is not a page change.
+    expect(entries.map((e) => e.isPageChange)).toEqual([false, true, false]);
+    expect(entries[1].fromPath).toBe("/cart");
+    expect(timelineJourney(entries)).toEqual(["/cart", "/checkout"]);
+  });
+});
+
+describe("detectOrder()", () => {
+  it("detects newest-first and chronological timestamps", () => {
+    expect(detectOrder(newestFirst)).toBe("newest-first");
+    expect(detectOrder([...newestFirst].reverse())).toBe("chronological");
+  });
+
+  it("assumes newest-first when there are no usable timestamps", () => {
+    expect(
+      detectOrder([
+        { action: "b", category: "custom", timestamp: "" },
+        { action: "a", category: "custom", timestamp: "" },
+      ]),
+    ).toBe("newest-first");
+  });
+
+  it("is honoured by buildTimeline in auto mode", () => {
+    const entries = buildTimeline([...newestFirst].reverse(), { order: "auto" });
+    expect(entries[0].action.action).toBe("Open checkout");
+    expect(entries[2].isLast).toBe(true);
+  });
+});
+
+describe("parseLegacyActions() metadata", () => {
+  it("reads a bare HTTP verb and a test id token", () => {
+    const [action] = parseLegacyActions(
+      "WAITLIST_SIGNUP_SUBMIT | POST | @testid:signup-form",
+    );
+
+    expect(action.action).toBe("WAITLIST_SIGNUP_SUBMIT");
+    expect(action.method).toBe("POST");
+    expect(action.targetTestId).toBe("signup-form");
   });
 });
